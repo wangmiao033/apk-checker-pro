@@ -54,6 +54,15 @@ export function buildDeveloperMessage(result: BaseResult): string {
       item.unityTip ? `   Unity 提示：${item.unityTip}` : ''
     ].filter(Boolean).join('\n'))
     .join('\n')
+  const privacyFixes = result.privacyChecks
+    .filter(item => item.status === 'warning' || item.status === 'high_risk')
+    .map((item, index) => [
+      `${index + 1}. ${item.title}`,
+      `   风险说明：${item.description}`,
+      item.findings.length ? `   命中项：${item.findings.map(f => f.label).join('；')}` : '',
+      `   整改：${item.suggestion}`
+    ].filter(Boolean).join('\n'))
+    .join('\n')
 
   return [
     '该 APK 不符合渠道提审要求，请研发修复后重新出包。',
@@ -63,6 +72,7 @@ export function buildDeveloperMessage(result: BaseResult): string {
     '',
     '整改说明：',
     hardCheckFixes || '1. 请重新输出 64 位包体，并确保 targetSdkVersion >= 30。',
+    privacyFixes ? ['', '隐私合规关注项：', privacyFixes].join('\n') : '',
     '',
     '处理完成后，请重新上传 APKFlow 复测。'
   ].join('\n')
@@ -102,6 +112,7 @@ export function buildHtmlReport(result: Omit<AnalyzeResult, 'htmlReport'>): stri
   }).join('')
   const logHtml = result.detectionLogs.map(log => `<tr><td>${esc(log.label)}</td><td>${log.status === 'success' ? '成功' : log.status === 'failed' ? '失败' : '跳过'}</td><td>${esc(log.message)}</td></tr>`).join('')
   const hardCheckHtml = result.hardChecks.map(item => `<tr><td>${esc(item.status)}</td><td>${esc(item.title)}</td><td>${esc(item.currentValue)}</td><td>${esc(item.expectedValue)}</td><td>${esc(item.description)}</td><td>${esc(item.suggestion)}</td></tr>`).join('')
+  const privacyHtml = result.privacyChecks.map(item => `<tr><td>${esc(item.status)}</td><td>${esc(item.title)}</td><td>${esc(item.level)}</td><td>${esc(item.description)}</td><td>${esc(item.findings.map(f => f.label).join('；') || '未命中')}</td><td>${esc(item.suggestion)}</td></tr>`).join('')
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -129,6 +140,7 @@ th{background:#f8fafc;color:#475569}pre{white-space:pre-wrap;background:#f8fafc;
 <div class="card"><h2>检测日志</h2><table><tr><th>项目</th><th>状态</th><th>说明</th></tr>${logHtml}</table></div>
 <div class="card"><h2>CPU 架构</h2><table><tr><th>ABI</th><th>类型</th><th>结果</th></tr>${abiHtml}</table></div>
 <div class="card"><h2>硬性检测项</h2><table><tr><th>状态</th><th>标题</th><th>当前值</th><th>要求值</th><th>说明</th><th>整改建议</th></tr>${hardCheckHtml}</table></div>
+<div class="card"><h2>隐私合规风险</h2><table><tr><th>状态</th><th>检测项</th><th>等级</th><th>说明</th><th>命中项</th><th>整改建议</th></tr>${privacyHtml}</table></div>
 <div class="card"><h2>渠道规则</h2><table><tr><th>渠道</th><th>结论</th><th>分数</th><th>说明</th></tr>${channelHtml}</table></div>
 <div class="card"><h2>风险项</h2><table><tr><th>级别</th><th>问题</th><th>说明</th><th>整改</th></tr>${riskHtml}</table></div>
 <div class="card"><h2>研发整改说明</h2><pre>${esc(result.developerMessage)}</pre></div>

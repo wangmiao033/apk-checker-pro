@@ -114,6 +114,13 @@ Hard checks:
 - `targetSdkVersion`: `< 30` is `blocker`; `>= 30` passes; unparsed values are `unknown`
 - `ABI compatibility`: missing `arm64-v8a` is `blocker`; pure 32-bit packages are `blocker`; only 64-bit packages are `warning`; `armeabi-v7a + arm64-v8a` passes
 
+Privacy risk checks:
+
+- high-risk permissions are reported as privacy warnings, not direct violations
+- suspected privacy dialog resources are reported as static evidence only; they do not prove compliance
+- pre-consent collection keywords are reported as high risk and require real-device validation before release
+- Unity games should complete privacy authorization before starting `UnityPlayerActivity`
+
 Security boundary:
 
 - only `.apk` filenames are accepted

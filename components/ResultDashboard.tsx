@@ -50,6 +50,19 @@ function hardCheckStatusText(status: string) {
   return '无法解析，需要人工确认'
 }
 
+function privacyCheckClass(status: string) {
+  if (status === 'high_risk') return 'rounded-3xl border border-rose-200 bg-rose-50 p-5'
+  if (status === 'warning') return 'rounded-3xl border border-amber-200 bg-amber-50 p-5'
+  return 'rounded-3xl border border-slate-200 bg-slate-50 p-5'
+}
+
+function privacyStatusText(status: string) {
+  if (status === 'high_risk') return '高风险'
+  if (status === 'warning') return '需关注'
+  if (status === 'unknown') return '无法解析'
+  return '已扫描'
+}
+
 export function ResultDashboard({ result }: { result: any }) {
   if (!result) return null
 
@@ -191,6 +204,34 @@ export function ResultDashboard({ result }: { result: any }) {
               <p className="mt-4 text-sm leading-6 text-slate-700">{item.description}</p>
               <p className="mt-3 rounded-2xl bg-white/80 p-3 text-sm leading-6 text-slate-800">整改建议：{item.suggestion}</p>
               {item.unityTip && <p className="mt-3 rounded-2xl bg-slate-950 p-3 text-sm leading-6 text-slate-100">{item.unityTip}</p>}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="glass-card p-6">
+        <div>
+          <h3 className="text-lg font-bold">隐私合规风险</h3>
+          <p className="mt-1 text-sm text-slate-500">静态扫描只提示风险和采集能力，不直接判定违规；授权前采集需结合真机、日志和抓包验证。</p>
+        </div>
+        <div className="mt-5 grid gap-4 xl:grid-cols-3">
+          {(result.privacyChecks || []).map((item: any) => (
+            <div key={item.key} className={privacyCheckClass(item.status)}>
+              <span className={levelClass(item.level)}>{privacyStatusText(item.status)}</span>
+              <h4 className="mt-3 text-lg font-black">{item.title}</h4>
+              <p className="mt-3 text-sm leading-6 text-slate-700">{item.description}</p>
+              <div className="mt-4 max-h-56 space-y-2 overflow-auto">
+                {item.findings.length === 0 ? (
+                  <div className="rounded-2xl bg-white/75 p-3 text-sm text-slate-500">未命中本项重点关键词。</div>
+                ) : item.findings.map((finding: any) => (
+                  <div key={`${item.key}-${finding.key}`} className="rounded-2xl bg-white/75 p-3">
+                    <div className="text-sm font-bold text-slate-900">{finding.label}</div>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">{finding.detail}</p>
+                    {finding.suggestion && <p className="mt-2 text-xs leading-5 text-slate-700">建议：{finding.suggestion}</p>}
+                  </div>
+                ))}
+              </div>
+              <p className="mt-4 rounded-2xl bg-white/80 p-3 text-sm leading-6 text-slate-800">整改建议：{item.suggestion}</p>
             </div>
           ))}
         </div>

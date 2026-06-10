@@ -5,6 +5,7 @@ export type DetectionStatus = 'passed' | 'failed' | 'parse_error'
 export type DetectionMode = 'full' | 'degraded' | 'unavailable'
 export type LogStatus = 'success' | 'failed' | 'skipped'
 export type HardCheckStatus = 'pass' | 'blocker' | 'warning' | 'unknown'
+export type PrivacyCheckStatus = 'found' | 'warning' | 'high_risk' | 'unknown'
 
 export type ApkHash = {
   md5: string
@@ -77,6 +78,23 @@ export type HardCheckItem = {
   unityTip?: string
 }
 
+export type PrivacyFinding = {
+  key: string
+  label: string
+  detail: string
+  suggestion?: string
+}
+
+export type PrivacyCheckItem = {
+  key: 'permissions' | 'privacyResources' | 'preConsentCollection'
+  title: string
+  status: PrivacyCheckStatus
+  level: RiskLevel
+  description: string
+  findings: PrivacyFinding[]
+  suggestion: string
+}
+
 export type ChannelCheck = {
   id: string
   name: string
@@ -117,6 +135,7 @@ export type AnalyzeResult = {
   debugKeywords: string[]
   risks: RiskItem[]
   hardChecks: HardCheckItem[]
+  privacyChecks: PrivacyCheckItem[]
   channelChecks: ChannelCheck[]
   failReasons: string[]
   developerMessage: string

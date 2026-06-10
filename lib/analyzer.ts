@@ -12,6 +12,7 @@ import type {
   DetectionMode,
   EngineHealth,
   HardCheckItem,
+  PrivacyCheckItem,
   RiskItem,
   ToolHealth
 } from './types'
@@ -36,6 +37,30 @@ const SENSITIVE_PERMISSIONS = [
   'android.permission.REQUEST_INSTALL_PACKAGES',
   'android.permission.QUERY_ALL_PACKAGES'
 ]
+
+const PRIVACY_PERMISSION_RULES = [
+  { name: 'android.permission.READ_PHONE_STATE', label: 'READ_PHONE_STATE', suggestion: '如非账号安全、实名或强风控必要，建议移除或延后到用户同意后申请。' },
+  { name: 'android.permission.WRITE_EXTERNAL_STORAGE', label: 'WRITE_EXTERNAL_STORAGE', suggestion: 'Android 10+ 建议改用分区存储或系统选择器，避免申请外部存储写权限。' },
+  { name: 'android.permission.READ_EXTERNAL_STORAGE', label: 'READ_EXTERNAL_STORAGE', suggestion: '如仅用于选择头像/截图，建议改用系统文件选择器并按需申请。' },
+  { name: 'android.permission.GET_TASKS', label: 'GET_TASKS', suggestion: '游戏通常不建议申请，非必要建议移除。' },
+  { name: 'android.permission.SYSTEM_ALERT_WINDOW', label: 'SYSTEM_ALERT_WINDOW', suggestion: '游戏通常不建议申请，非必要建议移除；悬浮窗能力容易触发渠道审核关注。' },
+  { name: 'android.permission.ACCESS_WIFI_STATE', label: 'ACCESS_WIFI_STATE', suggestion: '如仅用于网络判断，建议使用更低敏的网络状态 API，并在隐私政策中说明。' },
+  { name: 'android.permission.CHANGE_WIFI_STATE', label: 'CHANGE_WIFI_STATE', suggestion: '游戏通常不建议申请，非必要建议移除。' },
+  { name: 'android.permission.CHANGE_NETWORK_STATE', label: 'CHANGE_NETWORK_STATE', suggestion: '游戏通常不建议申请，非必要建议移除。' },
+  { name: 'android.permission.ACCESS_FINE_LOCATION', label: 'ACCESS_FINE_LOCATION', suggestion: '定位权限需有明确业务场景，必须在用户同意隐私政策后再申请。' },
+  { name: 'android.permission.ACCESS_COARSE_LOCATION', label: 'ACCESS_COARSE_LOCATION', suggestion: '定位权限需有明确业务场景，必须在用户同意隐私政策后再申请。' },
+  { name: 'android.permission.RECORD_AUDIO', label: 'RECORD_AUDIO', suggestion: '录音权限需对应语音聊天/客服等明确功能，并在使用前单独触发授权。' },
+  { name: 'android.permission.CAMERA', label: 'CAMERA', suggestion: '相机权限需对应扫码/头像等明确功能，并在使用前单独触发授权。' },
+  { name: 'android.permission.READ_CONTACTS', label: 'READ_CONTACTS', suggestion: '游戏通常不建议读取通讯录，非必要建议移除。' },
+  { name: 'android.permission.READ_SMS', label: 'READ_SMS', suggestion: '短信权限属于高敏权限，游戏包通常不建议申请。' },
+  { name: 'android.permission.CALL_PHONE', label: 'CALL_PHONE', suggestion: '拨号权限属于高敏权限，建议改为跳转拨号盘而不是直接拨打。' },
+  { name: 'com.bun.miitmdid.permission', label: 'MSA / OAID 相关权限', suggestion: 'OAID/MSA SDK 需延后到用户同意隐私政策后初始化，并在隐私政策中披露用途。', fuzzy: true },
+  { name: 'com.asus.msa.SupplementaryDID.ACCESS', label: 'MSA / OAID 相关权限', suggestion: 'OAID/MSA SDK 需延后到用户同意隐私政策后初始化，并在隐私政策中披露用途。', fuzzy: true }
+]
+
+const PRIVACY_RESOURCE_KEYWORDS = ['privacy', 'agreement', 'policy', 'user_agreement', '隐私', '用户协议', '隐私政策', '同意', '拒绝', '不同意', '取消', '确认', '好的', '我知道了']
+const WEAK_PRIVACY_BUTTON_KEYWORDS = ['好的', '我知道了', '确认', '取消']
+const COLLECTION_KEYWORDS = ['IMEI', 'IMSI', 'OAID', 'AAID', 'Android ID', 'ANDROID_ID', 'MAC', 'getDeviceId', 'getImei', 'getMac', 'getOAID', 'getAdvertisingIdInfo', 'getInstalledPackages', 'getRunningTasks', 'TelephonyManager', 'WifiInfo', 'DeviceInfo', 'MSA']
 
 type ExecResult = {
   ok: boolean
@@ -223,6 +248,83 @@ function buildHardChecks(targetSdkVersion: number | null, abiInfo: AbiInfo, abiS
   return [targetCheck, abiCheck]
 }
 
+function keywordFindings(source: string, keywords: string[], limit = 30) {
+  return unique(keywords.filter(keyword => source.toLowerCase().includes(keyword.toLowerCase())))
+    .slice(0, limit)
+    .map(keyword => ({
+      key: keyword,
+      label: keyword,
+      detail: `静态扫描命中关键词：${keyword}`
+    }))
+}
+
+function buildPrivacyChecks(permissions: string[], combined: string): PrivacyCheckItem[] {
+  const permissionFindings = PRIVACY_PERMISSION_RULES
+    .filter(rule => rule.fuzzy
+      ? permissions.some(permission => permission.toLowerCase().includes(rule.name.toLowerCase()) || permission.toLowerCase().includes('oaid') || permission.toLowerCase().includes('msa'))
+      : permissions.includes(rule.name))
+    .map(rule => ({
+      key: rule.name,
+      label: rule.label,
+      detail: `Manifest 申请了 ${rule.label}。权限存在不等于违规，但需要确认申请时机、业务必要性和隐私政策披露。`,
+      suggestion: rule.suggestion
+    }))
+
+  const privacyResourceFindings = keywordFindings(combined, PRIVACY_RESOURCE_KEYWORDS)
+  const weakButtonFindings = keywordFindings(combined, WEAK_PRIVACY_BUTTON_KEYWORDS).map(item => ({
+    ...item,
+    detail: `隐私弹窗按钮疑似使用“${item.label}”。如果只有这类按钮，渠道可能认为授权表达不清晰。`,
+    suggestion: '建议改成“同意 / 不同意”或“同意 / 拒绝”，避免只有“好的 / 我知道了 / 确认 / 取消”。'
+  }))
+  const collectionFindings = keywordFindings(combined, COLLECTION_KEYWORDS, 40).map(item => ({
+    ...item,
+    detail: `静态扫描命中采集能力关键词：${item.label}。`,
+    suggestion: '静态检测只能说明具备采集能力，需要真机验证用户同意前是否采集或上报。'
+  }))
+
+  return [
+    {
+      key: 'permissions',
+      title: '高风险权限检测',
+      status: permissionFindings.length ? 'warning' : 'found',
+      level: permissionFindings.length ? 'medium' : 'info',
+      description: permissionFindings.length
+        ? 'Manifest 中发现隐私敏感或渠道关注权限。权限存在不等于违规，需要结合业务场景和授权时机确认。'
+        : 'Manifest 未命中本轮重点隐私权限清单。',
+      findings: permissionFindings,
+      suggestion: permissionFindings.length
+        ? '逐项确认权限必要性；GET_TASKS、SYSTEM_ALERT_WINDOW、CHANGE_WIFI_STATE、CHANGE_NETWORK_STATE 游戏通常不建议申请，非必要建议移除。'
+        : '继续保持最小权限原则，仅在功能触发时申请必要权限。'
+    },
+    {
+      key: 'privacyResources',
+      title: '隐私弹窗资源检测',
+      status: privacyResourceFindings.length ? 'found' : 'warning',
+      level: privacyResourceFindings.length ? 'info' : 'medium',
+      description: privacyResourceFindings.length
+        ? '发现疑似隐私弹窗资源。静态检测只能说明存在相关资源，不能判定隐私弹窗流程合规通过。'
+        : '未发现明显隐私弹窗资源关键词，可能缺少隐私弹窗或资源被混淆，需要人工确认。',
+      findings: [...privacyResourceFindings, ...weakButtonFindings].slice(0, 40),
+      suggestion: weakButtonFindings.length
+        ? '隐私弹窗按钮建议改成“同意 / 不同意”或“同意 / 拒绝”，不要只使用“好的 / 我知道了 / 确认 / 取消”。'
+        : '请人工确认首次启动是否先展示隐私政策弹窗，并提供明确的同意与拒绝入口。'
+    },
+    {
+      key: 'preConsentCollection',
+      title: '授权前采集能力检测',
+      status: collectionFindings.length ? 'high_risk' : 'found',
+      level: collectionFindings.length ? 'high' : 'info',
+      description: collectionFindings.length
+        ? '发现设备标识、应用列表、运行任务、网络信息等采集能力关键词。静态检测不能直接判定违规，但需要重点真机验证用户同意前是否采集或上报。'
+        : '未命中本轮授权前采集能力关键词，但仍需以真机抓包和运行时日志验证为准。',
+      findings: collectionFindings,
+      suggestion: collectionFindings.length
+        ? '用户点击同意隐私政策前，不得初始化广告 SDK、统计 SDK、登录 SDK、支付 SDK、OAID/MSA SDK、TapTap SDK 等可能采集个人信息的模块。Unity 游戏建议在 UnityPlayerActivity 前增加 PrivacyActivity，先完成隐私授权，再启动 UnityPlayerActivity。'
+        : '继续确认 SDK 初始化时机，确保任何个人信息采集都发生在用户同意隐私政策之后。'
+    }
+  ]
+}
+
 export function analyzeApk(filePath: string, selectedChannelIds?: string[]): AnalyzeResult {
   const stat = fs.statSync(filePath)
   const originalName = path.basename(filePath).replace(/^\d+-[a-f0-9]+-/, '')
@@ -302,6 +404,7 @@ export function analyzeApk(filePath: string, selectedChannelIds?: string[]): Ana
     ? channelRules.filter(rule => selectedChannelIds.includes(rule.id))
     : channelRules
   const hardChecks = buildHardChecks(targetSdkVersion, abiInfo, abiScanOk)
+  const privacyChecks = buildPrivacyChecks(permissions, combined)
 
   const reportMeta = {
     reportId,
@@ -341,6 +444,7 @@ export function analyzeApk(filePath: string, selectedChannelIds?: string[]): Ana
       httpUrls,
       debugKeywords,
       hardChecks,
+      privacyChecks,
       risks: [{
         level: 'info' as const,
         title: '解析失败',
@@ -433,6 +537,28 @@ export function analyzeApk(filePath: string, selectedChannelIds?: string[]): Ana
       fix: '关闭 Debug 配置，确认没有测试环境、沙盒、调试开关残留。'
     })
   }
+  for (const item of privacyChecks) {
+    if (item.status === 'warning') {
+      risks.push({
+        level: 'medium',
+        title: item.title,
+        detail: item.description,
+        currentValue: item.findings.length ? item.findings.map(f => f.label).join('；') : '未发现',
+        expectedValue: item.key === 'privacyResources' ? '应存在明确同意/拒绝隐私弹窗' : '最小权限、按需申请、授权后初始化',
+        fix: item.suggestion
+      })
+    }
+    if (item.status === 'high_risk') {
+      risks.push({
+        level: 'high',
+        title: item.title,
+        detail: item.description,
+        currentValue: item.findings.map(f => f.label).join('；'),
+        expectedValue: '用户同意隐私政策后再初始化和采集',
+        fix: item.suggestion
+      })
+    }
+  }
 
   const channelChecks = selectedRules.map(rule => {
     let channelScore = 100
@@ -506,6 +632,7 @@ export function analyzeApk(filePath: string, selectedChannelIds?: string[]): Ana
     debugKeywords,
     risks,
     hardChecks,
+    privacyChecks,
     channelChecks,
     failReasons
   }
