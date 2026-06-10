@@ -42,6 +42,24 @@ type HistoryItem = {
   channelRuleName?: string
 }
 
+type ReportRecord = {
+  id: string
+  source: 'current' | 'history'
+  fileName: string
+  packageName: string | null
+  versionName: string | null
+  versionCode: string | null
+  status: string
+  conclusion: string
+  score: number | null
+  generatedAt: string
+  reportId?: string
+  criticalCount: number
+  warningCount: number
+  passCount: number
+  result: any
+}
+
 function classNames(...items: Array<string | false | null | undefined>) {
   return items.filter(Boolean).join(' ')
 }
@@ -114,6 +132,52 @@ function reportDownloadName(result: any, ext: 'html' | 'md' | 'json') {
   const version = safeExportPart(result?.apkInfo?.versionName || result?.apkInfo?.versionCode || 'unknown_version')
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
   return `APKFlow_${pkg}_${version}_${date}.${ext}`
+}
+
+function resultIssueCounts(result: any) {
+  const items = Array.isArray(result?.detectionItems) ? result.detectionItems : []
+  return {
+    criticalCount: items.filter((item: any) => item.status === 'fail').length,
+    warningCount: items.filter((item: any) => item.status === 'warning').length,
+    passCount: items.filter((item: any) => item.status === 'pass').length
+  }
+}
+
+function toReportRecord(input: { result: any; source: ReportRecord['source']; id?: string }): ReportRecord | null {
+  const result = input.result
+  if (!result) return null
+  const counts = resultIssueCounts(result)
+  return {
+    id: input.id || result.reportMeta?.reportId || result.apkHash?.sha256 || `${input.source}-${result.generatedAt || Date.now()}`,
+    source: input.source,
+    fileName: result.apkInfo?.fileName || '未知 APK',
+    packageName: result.apkInfo?.packageName || null,
+    versionName: result.apkInfo?.versionName || null,
+    versionCode: result.apkInfo?.versionCode || null,
+    status: result.status || 'unknown',
+    conclusion: result.submissionConclusion?.title || result.summary || statusText(result.status),
+    score: typeof result.score === 'number' ? result.score : null,
+    generatedAt: result.generatedAt || result.reportMeta?.detectedAt || '未记录',
+    reportId: result.reportMeta?.reportId,
+    ...counts,
+    result
+  }
+}
+
+function issueMap(result: any) {
+  const items = Array.isArray(result?.detectionItems) ? result.detectionItems : []
+  return new Map(items
+    .filter((item: any) => item.status === 'fail' || item.status === 'warning')
+    .map((item: any) => [item.id || item.title, item.title]))
+}
+
+function compareReports(current: any, previous: any) {
+  const currentIssues = issueMap(current)
+  const previousIssues = issueMap(previous)
+  const added = Array.from(currentIssues.entries()).filter(([id]) => !previousIssues.has(id)).map(([, title]) => title)
+  const fixed = Array.from(previousIssues.entries()).filter(([id]) => !currentIssues.has(id)).map(([, title]) => title)
+  const remaining = Array.from(currentIssues.entries()).filter(([id]) => previousIssues.has(id)).map(([, title]) => title)
+  return { added, fixed, remaining }
 }
 
 function defaultSelectedRuleIds(ruleList: ChannelRule[]) {
@@ -210,6 +274,9 @@ export function UploadWorkspace() {
   const [historyQuery, setHistoryQuery] = useState('')
   const [historyStatusFilter, setHistoryStatusFilter] = useState('all')
   const [historyRuleFilter, setHistoryRuleFilter] = useState('all')
+  const [reportQuery, setReportQuery] = useState('')
+  const [reportStatusFilter, setReportStatusFilter] = useState('all')
+  const [reportPackageFilter, setReportPackageFilter] = useState('all')
   const [selectedChannels, setSelectedChannels] = useState(defaultSelectedRuleIds(channelRules))
   const [rulesJson, setRulesJson] = useState('')
   const [ruleEditMessage, setRuleEditMessage] = useState('')
@@ -291,6 +358,19 @@ export function UploadWorkspace() {
     const avg = scored.length ? Math.round(scored.reduce((sum, item) => sum + (item.score || 0), 0) / scored.length) : null
     return { total, passed, failed, parseErrors, avg }
   }, [history])
+
+  const reportRecords = useMemo(() => {
+    const records: ReportRecord[] = []
+    const current = toReportRecord({ result, source: 'current' })
+    if (current) records.push(current)
+    for (const item of history) {
+      const record = toReportRecord({ result: item.result, source: 'history', id: item.reportId || item.id })
+      if (!record) continue
+      if (records.some(existing => existing.reportId && existing.reportId === record.reportId)) continue
+      records.push(record)
+    }
+    return records
+  }, [result, history])
 
   function saveHistory(nextItem: HistoryItem) {
     const next = [nextItem, ...history].slice(0, 50)
@@ -791,25 +871,131 @@ export function UploadWorkspace() {
     }
 
     if (activeView === 'reports') {
+      const packageOptions = Array.from(new Set(reportRecords.map(item => item.packageName).filter(Boolean))) as string[]
+      const filteredReports = reportRecords.filter(item => {
+        const query = reportQuery.trim().toLowerCase()
+        const matchesQuery = !query
+          || item.fileName.toLowerCase().includes(query)
+          || (item.packageName || '').toLowerCase().includes(query)
+          || (item.versionName || '').toLowerCase().includes(query)
+          || (item.reportId || '').toLowerCase().includes(query)
+        const matchesStatus = reportStatusFilter === 'all' || item.status === reportStatusFilter
+        const matchesPackage = reportPackageFilter === 'all' || item.packageName === reportPackageFilter
+        return matchesQuery && matchesStatus && matchesPackage
+      })
+      const currentRecord = result ? toReportRecord({ result, source: 'current' }) : null
+      const previousSamePackage = currentRecord
+        ? reportRecords
+          .filter(item => item.source === 'history' && item.packageName && item.packageName === currentRecord.packageName && item.reportId !== currentRecord.reportId)
+          .sort((a, b) => String(b.generatedAt).localeCompare(String(a.generatedAt)))[0]
+        : null
+      const reportDiff = currentRecord && previousSamePackage ? compareReports(currentRecord.result, previousSamePackage.result) : null
+
       return (
         <section className="glass-card p-5">
-          <h2 className="text-lg font-semibold text-slate-950">报告中心</h2>
-          <p className="mt-1 text-sm text-slate-500">检测完成后可复制完整报告、研发整改说明、运营话术，也可下载报告文件。</p>
-          {!result ? (
-            <div className="mt-8 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500">暂无可下载报告，请先上传 APK 完成检测。</div>
-          ) : (
-            <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <div className="flex flex-wrap gap-2">
-                <CopyButton text={result.fullReportText || result.markdownReport || JSON.stringify(result, null, 2)} label="复制完整报告" variant="light" />
-                <CopyButton text={result.developerMessage || ''} label="复制研发整改说明" variant="light" />
-                <CopyButton text={result.operationMessage || ''} label="复制运营话术" variant="light" />
-                <button onClick={() => downloadText(reportDownloadName(result, 'html'), result.htmlReport || result.fullReportText || '', 'text/html;charset=utf-8')} className="btn-secondary">下载报告</button>
-                <button onClick={() => downloadText(reportDownloadName(result, 'md'), result.markdownReport || result.fullReportText || '', 'text/markdown;charset=utf-8')} className="btn-secondary">下载 Markdown</button>
-                <button onClick={() => downloadText(reportDownloadName(result, 'json'), JSON.stringify(result, null, 2))} className="btn-secondary">下载 JSON</button>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">报告中心</h2>
+              <p className="mt-1 text-sm text-slate-500">集中查看当前报告和本地历史报告，支持筛选、重新打开、复制和下载。</p>
+            </div>
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">共 {reportRecords.length} 份报告</span>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_170px_220px]">
+            <input
+              value={reportQuery}
+              onChange={event => setReportQuery(event.target.value)}
+              placeholder="搜索包名、文件名、版本、报告编号"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400"
+            />
+            <select
+              value={reportStatusFilter}
+              onChange={event => setReportStatusFilter(event.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400"
+            >
+              <option value="all">全部结论</option>
+              <option value="passed">通过</option>
+              <option value="failed">不通过</option>
+              <option value="parse_error">解析失败</option>
+            </select>
+            <select
+              value={reportPackageFilter}
+              onChange={event => setReportPackageFilter(event.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400"
+            >
+              <option value="all">全部包名</option>
+              {packageOptions.map(pkg => <option key={pkg} value={pkg}>{pkg}</option>)}
+            </select>
+          </div>
+
+          {reportDiff && (
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-950">同包名报告对比</h3>
+                  <p className="mt-1 text-sm text-slate-500">当前报告与上一份同包名历史报告对比，只统计 fail / warning 问题。</p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 font-semibold text-rose-700">新增 {reportDiff.added.length}</span>
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">已修复 {reportDiff.fixed.length}</span>
+                  <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 font-semibold text-amber-700">仍存在 {reportDiff.remaining.length}</span>
+                </div>
               </div>
-              <p className="mt-3 text-sm text-slate-500">报告导出入口也会在检测工作台报告底部保留。</p>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                {[
+                  ['新增问题', reportDiff.added],
+                  ['已修复问题', reportDiff.fixed],
+                  ['仍存在问题', reportDiff.remaining]
+                ].map(([label, items]) => (
+                  <div key={label as string} className="rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="text-sm font-semibold text-slate-950">{label as string}</div>
+                    <div className="mt-2 space-y-1 text-xs leading-5 text-slate-500">
+                      {(items as string[]).slice(0, 5).map(item => <div key={item}>- {item}</div>)}
+                      {(items as string[]).length === 0 && <div>无</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
+
+          <div className="mt-5 grid gap-3">
+            {filteredReports.length === 0 && (
+              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500">当前筛选下暂无报告。</div>
+            )}
+            {filteredReports.map(item => (
+              <article key={`${item.source}-${item.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={statusClass(item.status)}>{item.conclusion}</span>
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">{item.source === 'current' ? '当前报告' : '历史报告'}</span>
+                    </div>
+                    <h3 className="mt-3 truncate text-base font-semibold text-slate-950">{item.fileName}</h3>
+                    <div className="mt-2 grid gap-x-4 gap-y-1 text-xs text-slate-500 sm:grid-cols-2 lg:grid-cols-4">
+                      <span>包名：{display(item.packageName)}</span>
+                      <span>版本：{display(item.versionName)} / {display(item.versionCode)}</span>
+                      <span>评分：{item.score === null ? '不可用' : item.score}</span>
+                      <span>时间：{item.generatedAt}</span>
+                      <span className="sm:col-span-2 lg:col-span-4">报告编号：{display(item.reportId)}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                      <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 font-semibold text-rose-700">严重 {item.criticalCount}</span>
+                      <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 font-semibold text-amber-700">风险 {item.warningCount}</span>
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">通过 {item.passCount}</span>
+                    </div>
+                  </div>
+                  <div className="flex max-w-full flex-wrap gap-2">
+                    <button onClick={() => { setResult(item.result); setActiveView('dashboard') }} className="btn-primary btn-sm">打开报告</button>
+                    <button onClick={() => downloadText(reportDownloadName(item.result, 'html'), item.result.htmlReport || item.result.fullReportText || '', 'text/html;charset=utf-8')} className="btn-secondary btn-sm">下载报告</button>
+                    <button onClick={() => downloadText(reportDownloadName(item.result, 'md'), item.result.markdownReport || item.result.fullReportText || '', 'text/markdown;charset=utf-8')} className="btn-secondary btn-sm">下载 Markdown</button>
+                    <button onClick={() => downloadText(reportDownloadName(item.result, 'json'), JSON.stringify(item.result, null, 2))} className="btn-secondary btn-sm">下载 JSON</button>
+                    <CopyButton text={item.result.developerMessage || ''} label="复制研发整改说明" variant="light" size="sm" />
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
         </section>
       )
     }

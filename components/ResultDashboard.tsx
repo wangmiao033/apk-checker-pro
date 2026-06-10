@@ -1,11 +1,23 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { CopyButton } from './CopyButton'
 import { MetricCard } from './MetricCard'
 
 type IssueStatus = 'fail' | 'risk' | 'pass' | 'parse_error' | 'info'
 type IssueFilter = 'all' | 'fail' | 'risk' | 'pass' | 'parse_error'
+type IssueWorkflowStatus = 'todo' | 'done' | 'ignored'
+
+type IssueWorkflowItem = {
+  status: IssueWorkflowStatus
+  note: string
+}
+
+type SdkChecklistItem = {
+  disclosed: boolean
+  deferredInit: boolean
+  note: string
+}
 
 type ReportIssue = {
   id: string
@@ -43,6 +55,16 @@ function classNames(...items: Array<string | false | null | undefined>) {
 function display(value: unknown) {
   if (value === null || value === undefined || value === '') return '未解析'
   return String(value)
+}
+
+function readJsonRecord<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : fallback
+  } catch {
+    return fallback
+  }
 }
 
 function safeName(value: unknown) {
@@ -158,6 +180,22 @@ function issueCopyText(issue: ReportIssue) {
   ].filter(Boolean).join('\n')
 }
 
+function reportStorageId(result: any) {
+  return display(result?.reportMeta?.reportId || result?.apkHash?.sha256 || result?.generatedAt || 'current-report')
+}
+
+function workflowLabel(status: IssueWorkflowStatus) {
+  if (status === 'done') return '已处理'
+  if (status === 'ignored') return '忽略'
+  return '待处理'
+}
+
+function workflowClass(status: IssueWorkflowStatus) {
+  if (status === 'done') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (status === 'ignored') return 'border-slate-200 bg-slate-100 text-slate-600'
+  return 'border-amber-200 bg-amber-50 text-amber-700'
+}
+
 function privacyExpected(key: string) {
   if (key === 'permissions') return '权限最小化，敏感权限需要业务必要性和隐私政策说明'
   if (key === 'privacyResources') return '首次启动应有清晰隐私弹窗，并提供同意与拒绝入口'
@@ -248,6 +286,110 @@ function CoverageScope({ result }: { result: any }) {
           </div>
         ))}
       </div>
+    </section>
+  )
+}
+
+function sdkChecklistText(result: any, checklist: Record<string, SdkChecklistItem>) {
+  const findings = Array.isArray(result.sdkFindings) ? result.sdkFindings : []
+  if (!findings.length) return '本次未命中广告、支付、推送、统计、OAID 重点 SDK 关键词。'
+  return [
+    '【第三方 SDK 清单核对】',
+    '',
+    ...findings.map((sdk: any, index: number) => {
+      const item = checklist[sdk.id] || { disclosed: false, deferredInit: false, note: '' }
+      return [
+        `${index + 1}. ${sdk.categoryLabel} - ${sdk.name}`,
+        `命中证据：${sdk.evidence?.join('、') || '未记录'}`,
+        `隐私政策 / SDK 清单披露：${item.disclosed ? '已确认' : '待确认'}`,
+        `用户同意后初始化：${item.deferredInit ? '已确认' : '待确认'}`,
+        `建议：${sdk.suggestion}`,
+        item.note ? `备注：${item.note}` : ''
+      ].filter(Boolean).join('\n')
+    })
+  ].join('\n\n')
+}
+
+function SdkChecklist({
+  result,
+  checklist,
+  onChange
+}: {
+  result: any
+  checklist: Record<string, SdkChecklistItem>
+  onChange: (id: string, next: SdkChecklistItem) => void
+}) {
+  const findings = Array.isArray(result.sdkFindings) ? result.sdkFindings : []
+  const categories = ['广告', '支付', '推送', '统计', 'OAID']
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-950">SDK 清单核对</h3>
+          <p className="mt-1 text-sm text-slate-500">用于运营核对隐私政策和第三方 SDK 清单，不改变检测结论。</p>
+        </div>
+        <CopyButton text={sdkChecklistText(result, checklist)} label="复制 SDK 清单" variant="light" size="sm" />
+      </div>
+
+      {!findings.length ? (
+        <div className="p-5 text-sm text-slate-500">本次未命中广告、支付、推送、统计、OAID 重点 SDK 关键词。</div>
+      ) : (
+        <div className="divide-y divide-slate-200">
+          {categories.map(category => {
+            const items = findings.filter((sdk: any) => sdk.categoryLabel === category)
+            if (!items.length) return null
+            return (
+              <div key={category} className="p-4">
+                <div className="mb-3 text-sm font-semibold text-slate-950">{category}</div>
+                <div className="space-y-3">
+                  {items.map((sdk: any) => {
+                    const item = checklist[sdk.id] || { disclosed: false, deferredInit: false, note: '' }
+                    return (
+                      <div key={sdk.id} className="rounded-lg border border-slate-200 bg-white p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-slate-950">{sdk.name}</div>
+                            <div className="mt-1 break-words text-xs leading-5 text-slate-500">命中：{sdk.evidence?.join('、') || '未记录'}</div>
+                          </div>
+                          <span className="status-info">{sdk.categoryLabel}</span>
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-slate-600">{sdk.disclosureNote}</p>
+                        <div className="mt-3 grid gap-3 lg:grid-cols-[180px_180px_minmax(0,1fr)]">
+                          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={item.disclosed}
+                              onChange={event => onChange(sdk.id, { ...item, disclosed: event.target.checked })}
+                              className="h-4 w-4"
+                            />
+                            已披露
+                          </label>
+                          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={item.deferredInit}
+                              onChange={event => onChange(sdk.id, { ...item, deferredInit: event.target.checked })}
+                              className="h-4 w-4"
+                            />
+                            授权后初始化
+                          </label>
+                          <input
+                            value={item.note}
+                            onChange={event => onChange(sdk.id, { ...item, note: event.target.value })}
+                            placeholder="备注 / SDK 清单链接 / 待确认事项"
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400"
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </section>
   )
 }
@@ -527,12 +669,25 @@ function buildIssueGroups(result: any): IssueGroup[] {
   return groups
 }
 
-function IssueCard({ issue }: { issue: ReportIssue }) {
+function IssueCard({
+  issue,
+  workflow,
+  onWorkflowChange
+}: {
+  issue: ReportIssue
+  workflow: IssueWorkflowItem
+  onWorkflowChange: (id: string, next: IssueWorkflowItem) => void
+}) {
+  const workflowStatuses: IssueWorkflowStatus[] = ['todo', 'done', 'ignored']
+
   return (
     <article className={classNames('rounded-lg border border-l-4 border-slate-200 bg-white p-4 text-left shadow-sm', issueBorderClass(issue.status))}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <span className={statusClass(issue.status)}>{statusLabel(issue.status)}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={statusClass(issue.status)}>{statusLabel(issue.status)}</span>
+            <span className={classNames('rounded-full border px-3 py-1 text-xs font-semibold', workflowClass(workflow.status))}>{workflowLabel(workflow.status)}</span>
+          </div>
           <h4 className="mt-3 break-words text-base font-semibold text-slate-950">{issue.title}</h4>
         </div>
         <CopyButton text={issueCopyText(issue)} label="复制本段" variant="light" size="sm" className="shrink-0" />
@@ -558,6 +713,35 @@ function IssueCard({ issue }: { issue: ReportIssue }) {
           <div className="text-xs font-semibold text-slate-500">研发整改建议</div>
           <p className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words pr-1 text-sm leading-7 text-slate-700">{issue.suggestion}</p>
         </div>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs font-semibold text-slate-500">处理状态</div>
+          <div className="flex flex-wrap gap-2">
+            {workflowStatuses.map(status => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => onWorkflowChange(issue.id, { ...workflow, status })}
+                className={classNames(
+                  'rounded-full border px-3 py-1 text-xs font-semibold transition',
+                  workflow.status === status
+                    ? workflowClass(status)
+                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                )}
+              >
+                {workflowLabel(status)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <input
+          value={workflow.note}
+          onChange={event => onWorkflowChange(issue.id, { ...workflow, note: event.target.value })}
+          placeholder="备注 / 负责人 / 工单链接"
+          className="mt-3 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400"
+        />
       </div>
     </article>
   )
@@ -602,6 +786,18 @@ function GroupSummary({ issues }: { issues: ReportIssue[] }) {
 
 export function ResultDashboard({ result }: { result: any }) {
   const [activeFilter, setActiveFilter] = useState<IssueFilter>('all')
+  const [issueWorkflow, setIssueWorkflow] = useState<Record<string, IssueWorkflowItem>>({})
+  const [sdkChecklist, setSdkChecklist] = useState<Record<string, SdkChecklistItem>>({})
+
+  const reportId = reportStorageId(result)
+  const issueWorkflowKey = `apkflow-issue-workflow:${reportId}`
+  const sdkChecklistKey = `apkflow-sdk-checklist:${reportId}`
+
+  useEffect(() => {
+    if (!result) return
+    setIssueWorkflow(readJsonRecord<Record<string, IssueWorkflowItem>>(issueWorkflowKey, {}))
+    setSdkChecklist(readJsonRecord<Record<string, SdkChecklistItem>>(sdkChecklistKey, {}))
+  }, [result, issueWorkflowKey, sdkChecklistKey])
 
   if (!result) return null
 
@@ -646,6 +842,27 @@ export function ResultDashboard({ result }: { result: any }) {
       : conclusionStatus === 'risk'
         ? '检测结论：有风险，建议整改后再提交渠道'
         : '检测结论：不建议提审，建议整改后再提交渠道'
+  const workflowSummary = allIssues.reduce((acc, issue) => {
+    const item = issueWorkflow[issue.id] || { status: 'todo' as const, note: '' }
+    acc[item.status] += 1
+    return acc
+  }, { todo: 0, done: 0, ignored: 0 })
+
+  function updateIssueWorkflow(id: string, next: IssueWorkflowItem) {
+    setIssueWorkflow(prev => {
+      const updated = { ...prev, [id]: next }
+      localStorage.setItem(issueWorkflowKey, JSON.stringify(updated))
+      return updated
+    })
+  }
+
+  function updateSdkChecklist(id: string, next: SdkChecklistItem) {
+    setSdkChecklist(prev => {
+      const updated = { ...prev, [id]: next }
+      localStorage.setItem(sdkChecklistKey, JSON.stringify(updated))
+      return updated
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -683,6 +900,12 @@ export function ResultDashboard({ result }: { result: any }) {
           建议动作：{actionText}
         </div>
 
+        <div className="mt-4 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 font-semibold text-amber-700">待处理 {workflowSummary.todo}</span>
+          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">已处理 {workflowSummary.done}</span>
+          <span className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1 font-semibold text-slate-600">忽略 {workflowSummary.ignored}</span>
+        </div>
+
         {Array.isArray(result.scoreBreakdown) && result.scoreBreakdown.length > 0 && (
           <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -712,6 +935,8 @@ export function ResultDashboard({ result }: { result: any }) {
       </section>
 
       <CoverageScope result={result} />
+
+      <SdkChecklist result={result} checklist={sdkChecklist} onChange={updateSdkChecklist} />
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -756,7 +981,14 @@ export function ResultDashboard({ result }: { result: any }) {
               </div>
             </summary>
             <div className="space-y-4 p-4">
-              {group.issues.map(issue => <IssueCard key={issue.id} issue={issue} />)}
+              {group.issues.map(issue => (
+                <IssueCard
+                  key={issue.id}
+                  issue={issue}
+                  workflow={issueWorkflow[issue.id] || { status: 'todo', note: '' }}
+                  onWorkflowChange={updateIssueWorkflow}
+                />
+              ))}
             </div>
           </details>
         ))}
