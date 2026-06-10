@@ -42,7 +42,7 @@ curl http://localhost:8080/api/health
 ```bash
 docker build -t apk-checker-api .
 docker run --rm -p 8080:8080 \
-  -e CORS_ORIGIN=https://apk-checker-pro.vercel.app \
+  -e CORS_ORIGIN=https://apk.hnchpower.cn \
   apk-checker-api
 ```
 
@@ -58,5 +58,5 @@ Deploy this API to a VM, container host, or other server that supports:
 Example frontend env:
 
 ```text
-NEXT_PUBLIC_ANALYZE_API_URL=https://api.apk-checker.xxx.com/api/analyze
+NEXT_PUBLIC_ANALYZE_API_URL=https://apk-api.hnchpower.cn/api/analyze
 ```

@@ -5,7 +5,7 @@ APKFlow is a frontend PWA plus standalone APK static analysis backend.
 The Vercel deployment is now frontend-only:
 
 ```text
-https://apk-checker-pro.vercel.app/
+https://apk.hnchpower.cn/
 ```
 
 Large APK analysis must be handled by the standalone backend in:
@@ -74,7 +74,7 @@ If the variable is not configured, the frontend falls back to:
 Production should configure:
 
 ```text
-NEXT_PUBLIC_ANALYZE_API_URL=https://api.apk-checker.xxx.com/api/analyze
+NEXT_PUBLIC_ANALYZE_API_URL=https://apk-api.hnchpower.cn/api/analyze
 ```
 
 ## Backend
@@ -111,7 +111,7 @@ Security boundary:
 - only `.apk` filenames are accepted
 - command execution uses argument arrays, not shell string concatenation
 - temporary files are cleaned in `finally`
-- CORS allows `https://apk-checker-pro.vercel.app` by default
+- CORS allows `https://apk.hnchpower.cn` by default
 
 ### Backend Local Run
 
@@ -146,7 +146,7 @@ strings
 cd apk-checker-api
 docker build -t apk-checker-api .
 docker run --rm -p 8080:8080 \
-  -e CORS_ORIGIN=https://apk-checker-pro.vercel.app \
+  -e CORS_ORIGIN=https://apk.hnchpower.cn \
   apk-checker-api
 ```
 
@@ -156,8 +156,8 @@ Recommended architecture:
 
 ```text
 Browser
-  -> Vercel frontend: https://apk-checker-pro.vercel.app
-  -> Analysis API: https://api.apk-checker.xxx.com/api/analyze
+  -> Vercel frontend: https://apk.hnchpower.cn
+  -> Analysis API: https://apk-api.hnchpower.cn/api/analyze
 ```
 
 Deploy the backend to a VM, cloud server, container service, or Kubernetes cluster that supports:
@@ -176,7 +176,7 @@ client_max_body_size 500m;
 Then set the Vercel frontend environment variable:
 
 ```text
-NEXT_PUBLIC_ANALYZE_API_URL=https://api.apk-checker.xxx.com/api/analyze
+NEXT_PUBLIC_ANALYZE_API_URL=https://apk-api.hnchpower.cn/api/analyze
 ```
 
 Redeploy the Vercel frontend after changing the environment variable.

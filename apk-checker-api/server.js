@@ -11,7 +11,7 @@ const app = express()
 const port = Number(process.env.PORT || 8080)
 const maxSize = 500 * 1024 * 1024
 const tmpRoot = process.env.APK_TMP_DIR || path.join(os.tmpdir(), 'apk-checker-api')
-const allowedOrigins = (process.env.CORS_ORIGIN || 'https://apk-checker-pro.vercel.app')
+const allowedOrigins = (process.env.CORS_ORIGIN || 'https://apk.hnchpower.cn,https://apk-checker-pro.vercel.app')
   .split(',')
   .map(item => item.trim())
   .filter(Boolean)

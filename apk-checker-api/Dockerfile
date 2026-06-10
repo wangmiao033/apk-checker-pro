@@ -13,7 +13,7 @@ COPY . .
 
 ENV NODE_ENV=production
 ENV PORT=8080
-ENV CORS_ORIGIN=https://apk-checker-pro.vercel.app
+ENV CORS_ORIGIN=https://apk.hnchpower.cn,https://apk-checker-pro.vercel.app
 
 EXPOSE 8080
 
