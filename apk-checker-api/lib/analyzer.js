@@ -2,10 +2,41 @@ const { execFileSync } = require('child_process')
 const crypto = require('crypto')
 const fs = require('fs')
 const path = require('path')
-const CHANNEL_RULES = require('../../config/channelRules.json')
 
 const ABI_LIST = ['armeabi', 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64']
 const RULE_VERSION = '2026.06-static-v2'
+
+function loadChannelRules() {
+  const candidates = [
+    path.join(__dirname, '../../config/channelRules.json'),
+    path.join(__dirname, '../config/channelRules.json'),
+    path.join(process.cwd(), 'config/channelRules.json')
+  ]
+  for (const file of candidates) {
+    if (fs.existsSync(file)) return require(file)
+  }
+  return [
+    {
+      id: 'generic',
+      channelName: '通用渠道',
+      name: '通用渠道',
+      logo: 'A',
+      minTargetSdkVersion: 33,
+      targetSdkMin: 33,
+      requireArm64: true,
+      allowPure32Bit: false,
+      allowDebuggable: false,
+      allowCleartextTraffic: false,
+      strictHttp: true,
+      maxApkSizeMB: 2048,
+      requiredSignatureSchemes: ['v2'],
+      sensitivePermissionPolicy: { QUERY_ALL_PACKAGES: 'high', READ_PHONE_STATE: 'medium' },
+      description: '通用基础规则。'
+    }
+  ]
+}
+
+const CHANNEL_RULES = loadChannelRules()
 
 const SENSITIVE_PERMISSIONS = [
   'android.permission.READ_PHONE_STATE',
