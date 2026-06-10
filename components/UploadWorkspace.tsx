@@ -173,6 +173,7 @@ export function UploadWorkspace() {
   const [engineMode, setEngineMode] = useState<EngineMode>('unavailable')
   const [engineMessage, setEngineMessage] = useState('检测服务状态检查中')
   const [engineHealth, setEngineHealth] = useState<EngineHealth | null>(null)
+  const [healthChecked, setHealthChecked] = useState(false)
   const [healthError, setHealthError] = useState('')
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -204,6 +205,7 @@ export function UploadWorkspace() {
         setEngineMode(mode)
         setEngineMessage(serviceStatusText(mode))
         setEngineHealth(json)
+        setHealthChecked(true)
         setHealthError('')
       })
       .catch((err: any) => {
@@ -211,6 +213,7 @@ export function UploadWorkspace() {
         setEngineMode('unavailable')
         setEngineMessage('检测服务暂不可用，请稍后重试')
         setEngineHealth(null)
+        setHealthChecked(true)
         setHealthError(err?.message || '健康检查失败')
       })
     return () => { alive = false }
@@ -402,7 +405,7 @@ export function UploadWorkspace() {
         </div>
         <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
           <div>检测服务：{engineMessage}</div>
-          <div>检测模式：{engineText(engineMode)}</div>
+          <div>检测模式：{healthChecked ? engineText(engineMode) : '状态检查中'}</div>
           <div>上传限制：{engineHealth?.maxUploadMB || maxUploadMB()}MB</div>
           <div>检查时间：{engineHealth?.checkedAt || '未完成'}</div>
           {engineHealth?.version && <div>后端版本：{engineHealth.version}</div>}
@@ -614,7 +617,7 @@ export function UploadWorkspace() {
             <h2 className="mt-3 break-words text-xl font-semibold tracking-tight text-slate-950">检测工作台</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">上传 APK 后自动生成多渠道提交前检测报告；解析失败时只显示失败原因和重新上传建议。</p>
           </div>
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">当前模式：{engineText(engineMode)}</span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">当前模式：{healthChecked ? engineText(engineMode) : '状态检查中'}</span>
         </div>
         <div className="mt-5">{renderUploadPanel()}</div>
         {error && <div className="mt-4 whitespace-pre-wrap rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium leading-6 text-rose-700">{error}</div>}
@@ -675,11 +678,11 @@ export function UploadWorkspace() {
               <p className="mt-2 text-sm text-slate-500">上传 APK 后自动生成多渠道提交前检测报告</p>
             </div>
             <button type="button" onClick={() => setDiagnosticsOpen(open => !open)} className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:bg-white sm:w-auto">
-              <div className={classNames('h-2.5 w-2.5 rounded-full', engineMode === 'full' ? 'bg-emerald-500' : engineMode === 'degraded' ? 'bg-amber-500' : 'bg-rose-500')} />
+              <div className={classNames('h-2.5 w-2.5 rounded-full', !healthChecked ? 'bg-amber-500' : engineMode === 'full' ? 'bg-emerald-500' : engineMode === 'degraded' ? 'bg-amber-500' : 'bg-rose-500')} />
               <div>
                 <div className="text-xs text-slate-500">检测服务</div>
                 <div className="text-sm font-semibold text-slate-900">{engineMessage}</div>
-                <div className="mt-0.5 text-xs text-slate-500">{engineText(engineMode)}</div>
+                <div className="mt-0.5 text-xs text-slate-500">{healthChecked ? engineText(engineMode) : '状态检查中'}</div>
               </div>
             </button>
             </div>
