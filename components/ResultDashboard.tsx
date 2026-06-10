@@ -371,13 +371,13 @@ function buildIssueGroups(result: any): IssueGroup[] {
 
 function IssueCard({ issue }: { issue: ReportIssue }) {
   return (
-    <article className={classNames('rounded-lg border border-l-4 border-slate-200 bg-white p-4 shadow-sm', issueBorderClass(issue.status))}>
+    <article className={classNames('rounded-lg border border-l-4 border-slate-200 bg-white p-4 text-left shadow-sm', issueBorderClass(issue.status))}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <span className={statusClass(issue.status)}>{statusLabel(issue.status)}</span>
-          <h4 className="mt-3 text-base font-semibold text-slate-950">{issue.title}</h4>
+          <h4 className="mt-3 break-words text-base font-semibold text-slate-950">{issue.title}</h4>
         </div>
-        <CopyButton text={issueCopyText(issue)} label="复制本段" variant="light" size="sm" />
+        <CopyButton text={issueCopyText(issue)} label="复制本段" variant="light" size="sm" className="shrink-0" />
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -392,16 +392,37 @@ function IssueCard({ issue }: { issue: ReportIssue }) {
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        <div>
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
           <div className="text-xs font-semibold text-slate-500">影响说明</div>
-          <p className="mt-2 text-sm leading-6 text-slate-600">{issue.impact}</p>
+          <p className="mt-2 break-words text-sm leading-6 text-slate-600">{issue.impact}</p>
         </div>
-        <div>
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
           <div className="text-xs font-semibold text-slate-500">研发整改建议</div>
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{issue.suggestion}</p>
+          <p className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words pr-1 text-sm leading-7 text-slate-700">{issue.suggestion}</p>
         </div>
       </div>
     </article>
+  )
+}
+
+function ExportActionButton({
+  title,
+  description,
+  onClick
+}: {
+  title: string
+  description: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex min-h-[92px] w-full flex-col justify-between rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+    >
+      <span className="text-sm font-semibold text-slate-950">{title}</span>
+      <span className="mt-3 text-xs leading-5 text-slate-500">{description}</span>
+    </button>
   )
 }
 
@@ -552,17 +573,36 @@ export function ResultDashboard({ result }: { result: any }) {
         ))}
       </section>
 
-      <section className="glass-card p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
+          <div className="min-w-0">
             <h3 className="text-lg font-semibold text-slate-950">报告导出</h3>
-            <p className="mt-1 text-sm text-slate-500">下载类操作和运营话术统一放在这里。</p>
+            <p className="mt-1 text-sm leading-6 text-slate-500">下载文件和运营同步话术集中在这里，适合提交工单、归档或转发渠道运营。</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => downloadText('apkflow-channel-report.html', result.htmlReport || result.fullReportText || '', 'text/html;charset=utf-8')} className="btn-secondary">下载报告</button>
-            <button type="button" onClick={() => downloadText('apkflow-report.md', result.markdownReport || result.fullReportText || '', 'text/markdown;charset=utf-8')} className="btn-secondary">下载 Markdown</button>
-            <button type="button" onClick={() => downloadText('apkflow-report.json', JSON.stringify(result, null, 2))} className="btn-secondary">下载 JSON</button>
-            <CopyButton text={result.operationMessage || ''} label="复制运营话术" variant="light" />
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">导出与同步</span>
+        </div>
+        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+          <ExportActionButton
+            title="下载报告"
+            description="导出 HTML 报告，适合留档或发给非研发同事查看。"
+            onClick={() => downloadText('apkflow-channel-report.html', result.htmlReport || result.fullReportText || '', 'text/html;charset=utf-8')}
+          />
+          <ExportActionButton
+            title="下载 Markdown"
+            description="导出 Markdown 文本，适合复制到工单、知识库或飞书文档。"
+            onClick={() => downloadText('apkflow-report.md', result.markdownReport || result.fullReportText || '', 'text/markdown;charset=utf-8')}
+          />
+          <ExportActionButton
+            title="下载 JSON"
+            description="导出原始检测数据，方便后续排查、归档或二次处理。"
+            onClick={() => downloadText('apkflow-report.json', JSON.stringify(result, null, 2))}
+          />
+          <div className="flex min-h-[92px] flex-col justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div>
+              <div className="text-sm font-semibold text-slate-950">复制运营话术</div>
+              <p className="mt-3 text-xs leading-5 text-slate-500">复制面向运营沟通的简短结论和后续动作。</p>
+            </div>
+            <CopyButton text={result.operationMessage || ''} label="复制运营话术" variant="light" className="mt-4 w-full" />
           </div>
         </div>
       </section>

@@ -420,7 +420,7 @@ export function UploadWorkspace() {
     const scoreText = result?.score === null || result?.score === undefined ? '不可用' : `${result.score}/100`
 
     return (
-      <aside className="glass-card overflow-hidden">
+      <aside className="glass-card overflow-hidden xl:sticky xl:top-7">
         <div className="border-b border-slate-200 px-4 py-3">
           <div className="text-sm font-semibold text-slate-950">辅助信息</div>
           <div className="mt-1 text-xs text-slate-500">默认收起非主流程内容</div>
@@ -625,7 +625,7 @@ export function UploadWorkspace() {
     )
 
     return (
-      <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <section className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
         <div className="min-w-0 space-y-6">
           {uploadShell}
 
@@ -654,13 +654,13 @@ export function UploadWorkspace() {
 
   return (
     <main className="min-h-screen px-4 pb-4 pt-6 lg:px-6 lg:pb-6 lg:pt-7">
-      <div className="mx-auto grid max-w-[1360px] gap-5 lg:grid-cols-[208px_1fr]">
-        <aside className="sticky top-7 hidden h-[calc(100vh-56px)] rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:block">
+      <div className="mx-auto grid max-w-[1420px] gap-4 lg:grid-cols-[184px_1fr]">
+        <aside className="sticky top-7 hidden self-start rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:block">
           <div className="flex items-center gap-2 px-2 py-1">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-xs font-semibold text-white">A</div>
             <div><div className="text-sm font-semibold text-slate-950">APKFlow</div><div className="text-[11px] text-slate-500">Channel QA</div></div>
           </div>
-          <nav className="mt-6 space-y-1">
+          <nav className="mt-5 space-y-1">
             {nav.map(([key, label]) => (
               <button key={key} onClick={() => setActiveView(key)} className={classNames('nav-item w-full', activeView === key && 'nav-item-active')}>
                 <span>{label}</span>
