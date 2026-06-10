@@ -1,10 +1,26 @@
 import type { AnalyzeResult } from './types'
 
-type BaseResult = Omit<AnalyzeResult, 'developerMessage' | 'operationMessage' | 'htmlReport'>
+type BaseResult = Omit<AnalyzeResult, 'developerMessage' | 'operationMessage' | 'htmlReport' | 'markdownReport' | 'fullReportText'>
 
 function display(value: unknown) {
   if (value === null || value === undefined || value === '') return '未解析'
   return String(value)
+}
+
+function abiList(result: BaseResult) {
+  const found = Object.entries(result.abiInfo).filter(([, exists]) => exists === true).map(([abi]) => abi)
+  if (Object.values(result.abiInfo).some(value => value === null)) return 'ABI 扫描失败'
+  return found.length ? found.join('、') : '未检测到 lib/ ABI 目录'
+}
+
+function permissionList(result: BaseResult) {
+  const permissionCheck = result.privacyChecks.find(item => item.key === 'permissions')
+  return permissionCheck?.findings.map(item => item.label).join('、') || '未命中重点权限'
+}
+
+function collectionList(result: BaseResult) {
+  const collectionCheck = result.privacyChecks.find(item => item.key === 'preConsentCollection')
+  return collectionCheck?.findings.map(item => item.label).join('、') || '未命中设备标识采集关键词'
 }
 
 export function buildDeveloperMessage(result: BaseResult): string {
@@ -27,7 +43,7 @@ export function buildDeveloperMessage(result: BaseResult): string {
 
   if (result.status === 'passed') {
     return [
-      '当前 APK 渠道提审检测通过。',
+      `当前 APK 检测结论：${result.submissionConclusion.title}。`,
       '',
       `包名：${display(result.apkInfo.packageName)}`,
       `版本：${display(result.apkInfo.versionName)} / ${display(result.apkInfo.versionCode)}`,
@@ -65,13 +81,17 @@ export function buildDeveloperMessage(result: BaseResult): string {
     .join('\n')
 
   return [
-    '该 APK 不符合渠道提审要求，请研发修复后重新出包。',
+    `当前 APK 检测${result.submissionConclusion.title}。主要问题如下：`,
     '',
-    '失败原因：',
-    reasons,
-    '',
-    '整改说明：',
-    hardCheckFixes || '1. 请重新输出 64 位包体，并确保 targetSdkVersion >= 30。',
+    `1. targetSdkVersion=${display(result.apkInfo.targetSdkVersion)}，${result.checks.targetSdkOk === false ? '低于渠道要求，需要升级到 30 或以上' : '当前未发现低于 30 的阻断问题'}；`,
+    `2. ABI 情况：${abiList(result)}；`,
+    `3. Manifest 中存在高风险权限：${permissionList(result)}；`,
+    `4. APK 中发现设备标识采集能力：${collectionList(result)}；`,
+    '5. 请确保用户同意隐私政策前，不初始化 SDK、不申请权限、不读取设备信息；',
+    '6. Unity 项目建议在 UnityPlayerActivity 前增加 PrivacyActivity；',
+    '7. 隐私政策和第三方 SDK 清单需要补全 SDK 名称、第三方公司、收集信息类型、功能用途、官网和隐私政策链接；',
+    '8. 整改后重新打包并重新上传渠道检测。',
+    hardCheckFixes ? ['', '硬性检测整改明细：', hardCheckFixes].join('\n') : '',
     privacyFixes ? ['', '隐私合规关注项：', privacyFixes].join('\n') : '',
     '',
     '处理完成后，请重新上传 APKFlow 复测。'
@@ -87,7 +107,56 @@ export function buildOperationMessage(result: BaseResult): string {
   }
   const blockers = result.hardChecks.filter(item => item.status === 'blocker').map(item => item.title)
   const warnings = result.hardChecks.filter(item => item.status === 'warning' || item.status === 'unknown').map(item => item.title)
-  return `APK 提交前检测不通过，暂不建议提交渠道。阻断问题：${blockers.join('；') || result.failReasons.join('；')}。${warnings.length ? `需关注：${warnings.join('；')}。` : ''}`
+  return `该 APK 当前存在上架风险，${result.submissionConclusion.status === 'blocked' ? '需要重新出包' : '暂不建议直接提交'}。主要原因是 ${blockers.join('；') || result.failReasons.join('；') || '存在隐私合规高风险项'}。需要研发重新打包，并确认首次启动隐私授权、SDK 初始化时机、权限申请和第三方 SDK 披露情况。${warnings.length ? `需关注：${warnings.join('；')}。` : ''}`
+}
+
+export function buildMarkdownReport(result: Omit<AnalyzeResult, 'htmlReport' | 'markdownReport' | 'fullReportText'>): string {
+  const risks = result.risks.length
+    ? result.risks.map((risk, index) => [
+      `${index + 1}. **${risk.title}**`,
+      `   - 风险等级：${risk.level}`,
+      `   - 当前检测值：${display(risk.currentValue)}`,
+      `   - 要求值：${display(risk.expectedValue)}`,
+      `   - 影响说明：${risk.detail}`,
+      `   - 研发整改建议：${display(risk.fix)}`,
+      `   - 运营备注：${display(risk.operationNote)}`
+    ].join('\n')).join('\n')
+    : '未发现明显风险。'
+
+  return [
+    '# APKFlow 渠道上架前 APK 风险检测报告',
+    '',
+    `- 总体结论：${result.submissionConclusion.title}`,
+    `- 结论说明：${result.submissionConclusion.summary}`,
+    `- 报告编号：${result.reportMeta.reportId}`,
+    `- 检测时间：${result.reportMeta.detectedAt}`,
+    `- 规则版本：${result.reportMeta.ruleVersion}`,
+    '',
+    '## APK 基础信息',
+    '',
+    `- 应用名：${display(result.apkInfo.appName)}`,
+    `- 包名：${display(result.apkInfo.packageName)}`,
+    `- 版本：${display(result.apkInfo.versionName)} / ${display(result.apkInfo.versionCode)}`,
+    `- minSdkVersion：${display(result.apkInfo.minSdkVersion)}`,
+    `- targetSdkVersion：${display(result.apkInfo.targetSdkVersion)}`,
+    `- ABI：${abiList(result)}`,
+    '',
+    '## 风险项',
+    '',
+    risks,
+    '',
+    '## 研发整改说明',
+    '',
+    result.developerMessage,
+    '',
+    '## 运营说明',
+    '',
+    result.operationMessage
+  ].join('\n')
+}
+
+export function buildFullReportText(result: Omit<AnalyzeResult, 'htmlReport' | 'fullReportText'>): string {
+  return buildMarkdownReport(result)
 }
 
 function esc(input: unknown) {
@@ -133,7 +202,7 @@ th{background:#f8fafc;color:#475569}pre{white-space:pre-wrap;background:#f8fafc;
 <body>
 <div class="header"><h1>APKFlow 检测报告</h1><p>${esc(result.reportMeta.detectedAt)}</p></div>
 <div class="container">
-<div class="card"><div class="score">${esc(scoreText)}</div><h2>${esc(statusText)} / 等级 ${esc(gradeText)}</h2><p>${esc(result.summary)}</p></div>
+<div class="card"><div class="score">${esc(scoreText)}</div><h2>${esc(result.submissionConclusion.title)} / 等级 ${esc(gradeText)}</h2><p>${esc(result.submissionConclusion.summary)}</p></div>
 <div class="card"><h2>报告信息</h2><p>报告编号：${esc(result.reportMeta.reportId)}</p><p>检测规则版本：${esc(result.reportMeta.ruleVersion)}</p><p>当前检测模式：${esc(result.reportMeta.detectionMode)}</p></div>
 <div class="card"><h2>APK 基础信息</h2><p>文件：${esc(result.apkInfo.fileName)}，${esc(result.apkInfo.fileSize)}</p><p>应用名：${esc(display(result.apkInfo.appName))}</p><p>包名：${esc(display(result.apkInfo.packageName))}</p><p>版本：${esc(display(result.apkInfo.versionName))} / ${esc(display(result.apkInfo.versionCode))}</p><p>minSdkVersion：${esc(display(result.apkInfo.minSdkVersion))}，targetSdkVersion：${esc(display(result.apkInfo.targetSdkVersion))}</p></div>
 <div class="card"><h2>APK Hash</h2><p>MD5：${esc(result.apkHash.md5)}</p><p>SHA1：${esc(result.apkHash.sha1)}</p><p>SHA256：${esc(result.apkHash.sha256)}</p></div>

@@ -20,6 +20,13 @@ function levelClass(level: string) {
   return 'status-pass'
 }
 
+function conclusionClass(level: string) {
+  if (level === 'blocker') return 'inline-flex rounded-full bg-rose-400/15 px-4 py-2 text-sm font-semibold text-rose-200 ring-1 ring-rose-300/30'
+  if (level === 'high') return 'inline-flex rounded-full bg-orange-400/15 px-4 py-2 text-sm font-semibold text-orange-100 ring-1 ring-orange-300/30'
+  if (level === 'medium') return 'inline-flex rounded-full bg-amber-400/15 px-4 py-2 text-sm font-semibold text-amber-100 ring-1 ring-amber-300/30'
+  return 'inline-flex rounded-full bg-emerald-400/15 px-4 py-2 text-sm font-semibold text-emerald-200 ring-1 ring-emerald-300/30'
+}
+
 function display(value: unknown) {
   if (value === null || value === undefined || value === '') return '未解析'
   return String(value)
@@ -72,6 +79,11 @@ export function ResultDashboard({ result }: { result: any }) {
   const passedChannels = result.channelChecks.filter((c: any) => c.passed === true).length
   const scoreText = result.score === null ? '评分不可用' : `${result.score}/100`
   const gradeText = result.grade === null ? '不可用' : `等级 ${result.grade}`
+  const conclusion = result.submissionConclusion || {
+    title: pass ? '通过' : parseError ? '无法解析，需要人工确认' : '不建议提交',
+    summary: result.summary,
+    level: parseError ? 'info' : pass ? 'info' : 'blocker'
+  }
 
   return (
     <div className="space-y-6">
@@ -79,17 +91,19 @@ export function ResultDashboard({ result }: { result: any }) {
         <div className="absolute inset-0 bg-radial-blue opacity-80" />
         <div className="relative grid gap-8 xl:grid-cols-[1fr_330px]">
           <div>
-            <div className={pass ? 'inline-flex rounded-full bg-emerald-400/15 px-4 py-2 text-sm font-semibold text-emerald-200 ring-1 ring-emerald-300/30' : parseError ? 'inline-flex rounded-full bg-amber-400/15 px-4 py-2 text-sm font-semibold text-amber-100 ring-1 ring-amber-300/30' : 'inline-flex rounded-full bg-rose-400/15 px-4 py-2 text-sm font-semibold text-rose-200 ring-1 ring-rose-300/30'}>
-              {pass ? '检测通过' : parseError ? '解析失败' : '检测不通过'}
+            <div className={conclusionClass(conclusion.level)}>
+              {conclusion.title}
             </div>
-            <h2 className="mt-5 text-4xl font-black tracking-tight">{result.summary}</h2>
+            <h2 className="mt-5 text-4xl font-black tracking-tight">{conclusion.title}</h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-              {parseError ? '当前环境无法完整解析该 APK，因此渠道结论和评分均不可用。请先修复检测引擎环境后重试。' : '渠道提交前检测报告已生成，可用于研发整改、运营同步和提交前复核。'}
+              {conclusion.summary}
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
+              <CopyButton text={result.fullReportText || result.markdownReport || JSON.stringify(result, null, 2)} label="复制完整报告" variant="light" />
               <CopyButton text={result.developerMessage} label="复制研发整改说明" variant="light" />
               <CopyButton text={result.operationMessage} label="复制运营话术" variant="light" />
               <button onClick={() => downloadText('apkflow-report.json', JSON.stringify(result, null, 2))} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white backdrop-blur hover:bg-white/15">下载 JSON</button>
+              <button onClick={() => downloadText('apkflow-report.md', result.markdownReport || result.fullReportText || '', 'text/markdown;charset=utf-8')} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white backdrop-blur hover:bg-white/15">下载 Markdown</button>
               <button onClick={() => downloadText('apkflow-channel-report.html', result.htmlReport, 'text/html;charset=utf-8')} className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white backdrop-blur hover:bg-white/15">下载 HTML 报告</button>
             </div>
           </div>
@@ -268,8 +282,13 @@ export function ResultDashboard({ result }: { result: any }) {
               <div key={index} className="rounded-3xl border border-slate-200 bg-white p-5">
                 <span className={levelClass(risk.level)}>{risk.level}</span>
                 <h4 className="mt-3 font-bold">{risk.title}</h4>
-                <p className="mt-2 text-sm leading-6 text-slate-500">{risk.detail}</p>
-                {risk.fix && <p className="mt-3 rounded-2xl bg-slate-50 p-3 text-sm leading-6 text-slate-700">整改：{risk.fix}</p>}
+                <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                  <div className="rounded-2xl bg-slate-50 p-3"><span className="text-slate-500">当前检测值：</span><b>{display(risk.currentValue)}</b></div>
+                  <div className="rounded-2xl bg-slate-50 p-3"><span className="text-slate-500">要求值：</span><b>{display(risk.expectedValue)}</b></div>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-slate-500">影响说明：{risk.detail}</p>
+                {risk.fix && <p className="mt-3 rounded-2xl bg-slate-50 p-3 text-sm leading-6 text-slate-700">研发整改建议：{risk.fix}</p>}
+                {risk.operationNote && <p className="mt-3 rounded-2xl bg-blue-50 p-3 text-sm leading-6 text-blue-800">运营备注：{risk.operationNote}</p>}
               </div>
             ))}
           </div>

@@ -314,6 +314,42 @@ function buildPrivacyChecks(permissions, combined) {
   ]
 }
 
+function buildSubmissionConclusion(status, hardChecks, privacyChecks, risks) {
+  if (status === 'parse_error') {
+    return {
+      status: 'unknown',
+      title: '无法解析，需要人工确认',
+      summary: '当前环境无法完整解析 APK，不能判定为通过或不通过，需要先修复解析能力或人工确认。',
+      level: 'info'
+    }
+  }
+  const hasBlocker = hardChecks.some(item => item.status === 'blocker') || risks.some(item => item.level === 'blocker')
+  const noPrivacyDialog = privacyChecks.some(item => item.key === 'privacyResources' && item.status === 'warning')
+  const hasCollectionRisk = privacyChecks.some(item => item.key === 'preConsentCollection' && item.status === 'high_risk')
+  const hasHighOrWarning = risks.some(item => item.level === 'high' || item.level === 'medium')
+
+  if (hasBlocker) return { status: 'blocked', title: '阻断，需要重新出包', summary: 'APK 存在 targetSdkVersion 或 64 位包体等阻断问题，当前不应提交渠道，需要研发重新打包。', level: 'blocker' }
+  if (noPrivacyDialog && hasCollectionRisk) return { status: 'not_recommended', title: '不建议提交', summary: '未发现明确隐私弹窗资源，同时发现设备标识或 SDK 采集能力，建议先完成隐私授权流程整改和真机验证。', level: 'high' }
+  if (hasHighOrWarning) return { status: 'risk', title: '有风险', summary: '硬性项未发现阻断问题，但仍存在隐私、权限、HTTP 或 SDK 初始化相关风险，建议整改后提交。', level: 'medium' }
+  return { status: 'passed', title: '通过', summary: '硬性检测项通过，未发现明显高风险项，可进入渠道提交前复核。', level: 'info' }
+}
+
+function abiList(result) {
+  const found = Object.entries(result.abiInfo || {}).filter(([, exists]) => exists === true).map(([abi]) => abi)
+  if (Object.values(result.abiInfo || {}).some(value => value === null)) return 'ABI 扫描失败'
+  return found.length ? found.join('、') : '未检测到 lib/ ABI 目录'
+}
+
+function permissionList(result) {
+  const permissionCheck = (result.privacyChecks || []).find(item => item.key === 'permissions')
+  return permissionCheck && permissionCheck.findings.length ? permissionCheck.findings.map(item => item.label).join('、') : '未命中重点权限'
+}
+
+function collectionList(result) {
+  const collectionCheck = (result.privacyChecks || []).find(item => item.key === 'preConsentCollection')
+  return collectionCheck && collectionCheck.findings.length ? collectionCheck.findings.map(item => item.label).join('、') : '未命中设备标识采集关键词'
+}
+
 function buildDeveloperMessage(result) {
   if (result.status === 'parse_error') {
     return [
@@ -331,7 +367,16 @@ function buildDeveloperMessage(result) {
       '- 环境修复后重新上传检测。'
     ].join('\n')
   }
-  if (result.status === 'passed') return '当前 APK 渠道提审检测通过。'
+  if (result.status === 'passed') return [
+    `当前 APK 检测结论：${result.submissionConclusion.title}。`,
+    '',
+    `包名：${display(result.apkInfo.packageName)}`,
+    `版本：${display(result.apkInfo.versionName)} / ${display(result.apkInfo.versionCode)}`,
+    `targetSdkVersion：${display(result.apkInfo.targetSdkVersion)}`,
+    `ABI 情况：${abiList(result)}`,
+    '',
+    '请在渠道后台提交前再核对渠道专属规则。'
+  ].join('\n')
   const hardCheckFixes = (result.hardChecks || [])
     .filter(item => item.status !== 'pass')
     .map((item, index) => [
@@ -353,13 +398,17 @@ function buildDeveloperMessage(result) {
     ].filter(Boolean).join('\n'))
     .join('\n')
   return [
-    '该 APK 不符合渠道提审要求，请研发修复后重新出包。',
+    `当前 APK 检测${result.submissionConclusion.title}。主要问题如下：`,
     '',
-    '失败原因：',
-    ...result.failReasons.map((item, index) => `${index + 1}. ${item}`),
-    '',
-    '整改说明：',
-    hardCheckFixes || '1. 请重新输出 64 位包体，并确保 targetSdkVersion >= 30。',
+    `1. targetSdkVersion=${display(result.apkInfo.targetSdkVersion)}，${result.checks.targetSdkOk === false ? '低于渠道要求，需要升级到 30 或以上' : '当前未发现低于 30 的阻断问题'}；`,
+    `2. ABI 情况：${abiList(result)}；`,
+    `3. Manifest 中存在高风险权限：${permissionList(result)}；`,
+    `4. APK 中发现设备标识采集能力：${collectionList(result)}；`,
+    '5. 请确保用户同意隐私政策前，不初始化 SDK、不申请权限、不读取设备信息；',
+    '6. Unity 项目建议在 UnityPlayerActivity 前增加 PrivacyActivity；',
+    '7. 隐私政策和第三方 SDK 清单需要补全 SDK 名称、第三方公司、收集信息类型、功能用途、官网和隐私政策链接；',
+    '8. 整改后重新打包并重新上传渠道检测。',
+    hardCheckFixes ? ['', '硬性检测整改明细：', hardCheckFixes].join('\n') : '',
     privacyFixes ? ['', '隐私合规关注项：', privacyFixes].join('\n') : '',
     '',
     '处理完成后，请重新上传 APKFlow 复测。'
@@ -371,7 +420,52 @@ function buildOperationMessage(result) {
   if (result.status === 'passed') return 'APK 提交前检测通过。'
   const blockers = (result.hardChecks || []).filter(item => item.status === 'blocker').map(item => item.title)
   const warnings = (result.hardChecks || []).filter(item => item.status === 'warning' || item.status === 'unknown').map(item => item.title)
-  return `APK 提交前检测不通过，暂不建议提交渠道。阻断问题：${blockers.join('；') || result.failReasons.join('；')}。${warnings.length ? `需关注：${warnings.join('；')}。` : ''}`
+  return `该 APK 当前存在上架风险，${result.submissionConclusion.status === 'blocked' ? '需要重新出包' : '暂不建议直接提交'}。主要原因是 ${blockers.join('；') || result.failReasons.join('；') || '存在隐私合规高风险项'}。需要研发重新打包，并确认首次启动隐私授权、SDK 初始化时机、权限申请和第三方 SDK 披露情况。${warnings.length ? `需关注：${warnings.join('；')}。` : ''}`
+}
+
+function buildMarkdownReport(result) {
+  const risks = result.risks.length
+    ? result.risks.map((risk, index) => [
+      `${index + 1}. **${risk.title}**`,
+      `   - 风险等级：${risk.level}`,
+      `   - 当前检测值：${display(risk.currentValue)}`,
+      `   - 要求值：${display(risk.expectedValue)}`,
+      `   - 影响说明：${risk.detail}`,
+      `   - 研发整改建议：${display(risk.fix)}`,
+      `   - 运营备注：${display(risk.operationNote)}`
+    ].join('\n')).join('\n')
+    : '未发现明显风险。'
+
+  return [
+    '# APKFlow 渠道上架前 APK 风险检测报告',
+    '',
+    `- 总体结论：${result.submissionConclusion.title}`,
+    `- 结论说明：${result.submissionConclusion.summary}`,
+    `- 报告编号：${result.reportMeta.reportId}`,
+    `- 检测时间：${result.reportMeta.detectedAt}`,
+    `- 规则版本：${result.reportMeta.ruleVersion}`,
+    '',
+    '## APK 基础信息',
+    '',
+    `- 应用名：${display(result.apkInfo.appName)}`,
+    `- 包名：${display(result.apkInfo.packageName)}`,
+    `- 版本：${display(result.apkInfo.versionName)} / ${display(result.apkInfo.versionCode)}`,
+    `- minSdkVersion：${display(result.apkInfo.minSdkVersion)}`,
+    `- targetSdkVersion：${display(result.apkInfo.targetSdkVersion)}`,
+    `- ABI：${abiList(result)}`,
+    '',
+    '## 风险项',
+    '',
+    risks,
+    '',
+    '## 研发整改说明',
+    '',
+    result.developerMessage,
+    '',
+    '## 运营说明',
+    '',
+    result.operationMessage
+  ].join('\n')
 }
 
 function buildHtmlReport(result) {
@@ -501,20 +595,24 @@ function analyzeApk(filePath, options = {}) {
   }
 
   if (parseErrorReasons.length > 0) {
+    const parseRisks = [{ level: 'info', title: '解析失败', detail: parseErrorReasons.join('；'), currentValue: '未解析', expectedValue: 'APK 可被 unzip/aapt 正常解析', fix: '请将检测后端部署到支持 unzip、aapt、apksigner、strings 的服务器后重新检测。', operationNote: '当前报告不能作为渠道通过或不通过依据，需要人工确认。' }]
     const base = {
       status: 'parse_error',
+      submissionConclusion: buildSubmissionConclusion('parse_error', hardChecks, privacyChecks, parseRisks),
       grade: null,
       score: null,
       summary: 'APK 解析失败，当前环境无法完整解析该 APK',
       ...common,
-      risks: [{ level: 'info', title: '解析失败', detail: parseErrorReasons.join('；'), fix: '请将检测后端部署到支持 unzip、aapt、apksigner、strings 的服务器后重新检测。' }],
+      risks: parseRisks,
       channelChecks: selectedRules.map(rule => ({ id: rule.id, name: rule.name, logo: rule.logo, passed: null, score: null, messages: ['解析失败，渠道结论不可用'] })),
       failReasons: parseErrorReasons
     }
     const developerMessage = buildDeveloperMessage(base)
     const operationMessage = buildOperationMessage(base)
-    const htmlReport = buildHtmlReport({ ...base, developerMessage, operationMessage })
-    return { ...base, developerMessage, operationMessage, htmlReport }
+    const markdownReport = buildMarkdownReport({ ...base, developerMessage, operationMessage })
+    const fullReportText = markdownReport
+    const htmlReport = buildHtmlReport({ ...base, developerMessage, operationMessage, markdownReport, fullReportText })
+    return { ...base, developerMessage, operationMessage, markdownReport, fullReportText, htmlReport }
   }
 
   const risks = []
@@ -529,7 +627,8 @@ function analyzeApk(filePath, options = {}) {
         : 'APK 未检测到 lib/arm64-v8a/，当前包体不满足 64 位要求。',
       currentValue: abiListText(abiInfo),
       expectedValue: '必须包含 arm64-v8a；推荐同时包含 armeabi-v7a + arm64-v8a',
-      fix: '请研发重新输出 64 位包体，并确保最终 APK 至少包含 lib/arm64-v8a/；如需兼容 32 位设备，建议同时保留 lib/armeabi-v7a/。'
+      fix: '请研发重新输出 64 位包体，并确保最终 APK 至少包含 lib/arm64-v8a/；如需兼容 32 位设备，建议同时保留 lib/armeabi-v7a/。',
+      operationNote: '缺少 64 位包体通常会导致渠道审核阻断，暂不建议提交。'
     })
   }
   if (targetSdkVersion !== null && targetSdkVersion < 30) {
@@ -540,7 +639,8 @@ function analyzeApk(filePath, options = {}) {
       detail: `当前 targetSdkVersion=${targetSdkVersion}，低于渠道要求。渠道通常要求 targetSdkVersion >= 30。`,
       currentValue: targetSdkVersion,
       expectedValue: '>= 30',
-      fix: '请研发将 targetSdkVersion / Unity Target API Level 升级到 30 或以上，建议 33/34/35/36。Unity 路径：File > Build Settings > Player Settings > Other Settings > Target API Level'
+      fix: '请研发将 targetSdkVersion / Unity Target API Level 升级到 30 或以上，建议 33/34/35/36。Unity 路径：File > Build Settings > Player Settings > Other Settings > Target API Level',
+      operationNote: 'targetSdkVersion 低于渠道要求时，通常需要重新出包后再提交。'
     })
   }
   if (checks.hasArm64 && abiInfo['armeabi-v7a'] === false) {
@@ -550,11 +650,12 @@ function analyzeApk(filePath, options = {}) {
       detail: 'APK 已包含 arm64-v8a，满足 64 位基础要求，但未检测到 armeabi-v7a，不是 32/64 兼容包。',
       currentValue: abiListText(abiInfo),
       expectedValue: '同时包含 armeabi-v7a + arm64-v8a',
-      fix: '如果渠道或业务仍需兼容 32 位设备，请研发同时输出 lib/armeabi-v7a/ 与 lib/arm64-v8a/。'
+      fix: '如果渠道或业务仍需兼容 32 位设备，请研发同时输出 lib/armeabi-v7a/ 与 lib/arm64-v8a/。',
+      operationNote: '已满足 64 位基础要求，但可能影响仍需 32 位兼容的设备覆盖。'
     })
   }
-  if (checks.hasHttp) risks.push({ level: 'medium', title: '存在 HTTP 明文地址', detail: `检测到 ${httpUrls.length} 个 HTTP 明文地址。`, fix: '将正式环境地址升级为 HTTPS。' })
-  if (checks.hasSensitivePermissions) risks.push({ level: 'medium', title: '存在敏感权限', detail: sensitivePermissions.join('；'), fix: '删除无用敏感权限并同步隐私政策。' })
+  if (checks.hasHttp) risks.push({ level: 'medium', title: '存在 HTTP 明文地址', detail: `检测到 ${httpUrls.length} 个 HTTP 明文地址。`, currentValue: httpUrls.slice(0, 10).join('；'), expectedValue: '正式环境接口和资源应使用 HTTPS', fix: '将正式环境地址升级为 HTTPS。', operationNote: 'HTTP 明文地址可能触发隐私与网络安全审核关注。' })
+  if (checks.hasSensitivePermissions) risks.push({ level: 'medium', title: '存在敏感权限', detail: sensitivePermissions.join('；'), currentValue: sensitivePermissions.join('；'), expectedValue: '最小权限、按需申请、隐私政策披露', fix: '删除无用敏感权限并同步隐私政策。', operationNote: '敏感权限需要确认业务必要性和授权时机。' })
   for (const item of privacyChecks) {
     if (item.status === 'warning') {
       risks.push({
@@ -563,7 +664,8 @@ function analyzeApk(filePath, options = {}) {
         detail: item.description,
         currentValue: item.findings.length ? item.findings.map(f => f.label).join('；') : '未发现',
         expectedValue: item.key === 'privacyResources' ? '应存在明确同意/拒绝隐私弹窗' : '最小权限、按需申请、授权后初始化',
-        fix: item.suggestion
+        fix: item.suggestion,
+        operationNote: '隐私合规项需要研发整改后，由运营或合规同事复核隐私政策和弹窗流程。'
       })
     }
     if (item.status === 'high_risk') {
@@ -573,7 +675,8 @@ function analyzeApk(filePath, options = {}) {
         detail: item.description,
         currentValue: item.findings.map(f => f.label).join('；'),
         expectedValue: '用户同意隐私政策后再初始化和采集',
-        fix: item.suggestion
+        fix: item.suggestion,
+        operationNote: '授权前采集能力属于渠道重点关注项，建议完成真机抓包验证后再提交。'
       })
     }
   }
@@ -615,6 +718,7 @@ function analyzeApk(filePath, options = {}) {
 
   const base = {
     status: failReasons.length === 0 ? 'passed' : 'failed',
+    submissionConclusion: buildSubmissionConclusion(failReasons.length === 0 ? 'passed' : 'failed', hardChecks, privacyChecks, risks),
     grade: gradeFromScore(score),
     score,
     summary: failReasons.length === 0 ? '渠道提审检测通过' : '渠道提审检测不通过',
@@ -625,8 +729,10 @@ function analyzeApk(filePath, options = {}) {
   }
   const developerMessage = buildDeveloperMessage(base)
   const operationMessage = buildOperationMessage(base)
-  const htmlReport = buildHtmlReport({ ...base, developerMessage, operationMessage })
-  return { ...base, developerMessage, operationMessage, htmlReport }
+  const markdownReport = buildMarkdownReport({ ...base, developerMessage, operationMessage })
+  const fullReportText = markdownReport
+  const htmlReport = buildHtmlReport({ ...base, developerMessage, operationMessage, markdownReport, fullReportText })
+  return { ...base, developerMessage, operationMessage, markdownReport, fullReportText, htmlReport }
 }
 
 module.exports = { analyzeApk, getEngineHealth }

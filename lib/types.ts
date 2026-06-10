@@ -56,6 +56,7 @@ export type ApkInfo = {
 }
 
 export type RiskLevel = 'blocker' | 'high' | 'medium' | 'low' | 'info'
+export type SubmissionConclusionStatus = 'passed' | 'risk' | 'not_recommended' | 'blocked' | 'unknown'
 
 export type RiskItem = {
   level: RiskLevel
@@ -64,6 +65,7 @@ export type RiskItem = {
   currentValue?: string | number | null
   expectedValue?: string
   fix?: string
+  operationNote?: string
 }
 
 export type HardCheckItem = {
@@ -118,6 +120,12 @@ export type AnalyzerChecks = {
 
 export type AnalyzeResult = {
   status: DetectionStatus
+  submissionConclusion: {
+    status: SubmissionConclusionStatus
+    title: string
+    summary: string
+    level: RiskLevel
+  }
   grade: 'A' | 'B' | 'C' | 'D' | null
   score: number | null
   summary: string
@@ -140,5 +148,7 @@ export type AnalyzeResult = {
   failReasons: string[]
   developerMessage: string
   operationMessage: string
+  markdownReport: string
+  fullReportText: string
   htmlReport: string
 }

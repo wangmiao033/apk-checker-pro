@@ -292,6 +292,7 @@ export function UploadWorkspace() {
               <button type="button" className="btn-secondary" onClick={() => inputRef.current?.click()}>重新上传</button>
               <button type="button" className="btn-primary" onClick={analyze} disabled={loading}>{loading ? '检测中...' : '重新检测'}</button>
               <button type="button" className="btn-secondary" onClick={() => downloadText('apkflow-report.json', JSON.stringify(result, null, 2))}>下载报告</button>
+              <button type="button" className="btn-secondary" onClick={() => downloadText('apkflow-report.md', result.markdownReport || result.fullReportText || '', 'text/markdown;charset=utf-8')}>下载 Markdown</button>
             </div>
           </div>
           {loading && (
@@ -449,9 +450,17 @@ export function UploadWorkspace() {
                 <div className="text-lg font-black">JSON 检测报告</div>
                 <div className="mt-2 text-sm text-slate-500">适合研发系统、CI/CD 或二次解析。</div>
               </button>
+              <button onClick={() => downloadText('apkflow-report.md', result.markdownReport || result.fullReportText || '', 'text/markdown;charset=utf-8')} className="rounded-3xl border border-slate-200 bg-white p-8 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-glass">
+                <div className="text-lg font-black">Markdown 检测报告</div>
+                <div className="mt-2 text-sm text-slate-500">适合发到飞书、企微、Tapd 或 Jira 工单。</div>
+              </button>
               <button onClick={() => downloadText('apkflow-channel-report.html', result.htmlReport, 'text/html;charset=utf-8')} className="rounded-3xl border border-slate-200 bg-white p-8 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-glass">
                 <div className="text-lg font-black">HTML 检测报告</div>
                 <div className="mt-2 text-sm text-slate-500">适合发送给研发、运营、管理层查看。</div>
+              </button>
+              <button onClick={() => navigator.clipboard.writeText(result.fullReportText || result.markdownReport || JSON.stringify(result, null, 2))} className="rounded-3xl border border-slate-200 bg-white p-8 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-glass">
+                <div className="text-lg font-black">复制完整报告</div>
+                <div className="mt-2 text-sm text-slate-500">一键复制完整文本报告。</div>
               </button>
             </div>
           )}
