@@ -16,30 +16,48 @@ function downloadText(filename: string, content: string, type = 'application/jso
 function levelClass(level: string) {
   if (level === 'blocker' || level === 'high') return 'status-fail'
   if (level === 'medium') return 'status-warn'
-  if (level === 'low') return 'status-info'
+  if (level === 'low' || level === 'info') return 'status-info'
   return 'status-pass'
+}
+
+function display(value: unknown) {
+  if (value === null || value === undefined || value === '') return '未解析'
+  return String(value)
+}
+
+function abiDisplay(value: boolean | null) {
+  if (value === null) return 'ABI 扫描失败'
+  return value ? '存在' : '不存在'
+}
+
+function logStatusText(status: string) {
+  if (status === 'success') return '成功'
+  if (status === 'failed') return '失败'
+  return '跳过'
 }
 
 export function ResultDashboard({ result }: { result: any }) {
   if (!result) return null
 
   const pass = result.status === 'passed'
+  const parseError = result.status === 'parse_error'
   const blockerCount = result.risks.filter((r: any) => r.level === 'blocker').length
-  const passedChannels = result.channelChecks.filter((c: any) => c.passed).length
+  const passedChannels = result.channelChecks.filter((c: any) => c.passed === true).length
+  const scoreText = result.score === null ? '评分不可用' : `${result.score}/100`
+  const gradeText = result.grade === null ? '不可用' : `等级 ${result.grade}`
 
   return (
     <div className="space-y-6">
       <section className="relative overflow-hidden rounded-[2rem] bg-slate-950 p-8 text-white shadow-glow">
         <div className="absolute inset-0 bg-radial-blue opacity-80" />
-        <div className="absolute inset-0 bg-radial-purple opacity-80" />
         <div className="relative grid gap-8 xl:grid-cols-[1fr_330px]">
           <div>
-            <div className={pass ? 'inline-flex rounded-full bg-emerald-400/15 px-4 py-2 text-sm font-semibold text-emerald-200 ring-1 ring-emerald-300/30' : 'inline-flex rounded-full bg-rose-400/15 px-4 py-2 text-sm font-semibold text-rose-200 ring-1 ring-rose-300/30'}>
-              {pass ? 'Ready for submit' : 'Blocked before submit'}
+            <div className={pass ? 'inline-flex rounded-full bg-emerald-400/15 px-4 py-2 text-sm font-semibold text-emerald-200 ring-1 ring-emerald-300/30' : parseError ? 'inline-flex rounded-full bg-amber-400/15 px-4 py-2 text-sm font-semibold text-amber-100 ring-1 ring-amber-300/30' : 'inline-flex rounded-full bg-rose-400/15 px-4 py-2 text-sm font-semibold text-rose-200 ring-1 ring-rose-300/30'}>
+              {pass ? '检测通过' : parseError ? '解析失败' : '检测不通过'}
             </div>
             <h2 className="mt-5 text-4xl font-black tracking-tight">{result.summary}</h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-              渠道提交前报告已生成。该报告用于研发整改、运营同步和渠道提审前复核。
+              {parseError ? '当前环境无法完整解析该 APK，因此渠道结论和评分均不可用。请先修复检测引擎环境后重试。' : '渠道提交前检测报告已生成，可用于研发整改、运营同步和提交前复核。'}
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <CopyButton text={result.developerMessage} label="复制研发整改说明" variant="light" />
@@ -51,20 +69,27 @@ export function ResultDashboard({ result }: { result: any }) {
 
           <div className="rounded-[2rem] border border-white/10 bg-white/10 p-6 backdrop-blur-xl">
             <div className="text-sm text-slate-300">APKFlow Score</div>
-            <div className={pass ? 'mt-3 text-7xl font-black text-emerald-300' : 'mt-3 text-7xl font-black text-rose-300'}>{result.score}</div>
-            <div className="mt-2 text-sm text-slate-300">等级 {result.grade} · {result.generatedAt}</div>
-            <div className="mt-6 h-3 overflow-hidden rounded-full bg-white/10">
-              <div className={pass ? 'h-full bg-emerald-300' : 'h-full bg-rose-300'} style={{ width: `${result.score}%` }} />
+            <div className={pass ? 'mt-3 text-5xl font-black text-emerald-300' : parseError ? 'mt-3 text-4xl font-black text-amber-200' : 'mt-3 text-5xl font-black text-rose-300'}>{scoreText}</div>
+            <div className="mt-2 text-sm text-slate-300">{gradeText} · {result.generatedAt}</div>
+            <div className="mt-5 rounded-2xl bg-white/10 p-4 text-xs leading-5 text-slate-300">
+              报告编号：{result.reportMeta?.reportId}<br />
+              规则版本：{result.reportMeta?.ruleVersion}<br />
+              检测模式：{result.reportMeta?.detectionMode}
             </div>
+            {typeof result.score === 'number' && (
+              <div className="mt-6 h-3 overflow-hidden rounded-full bg-white/10">
+                <div className={pass ? 'h-full bg-emerald-300' : 'h-full bg-rose-300'} style={{ width: `${result.score}%` }} />
+              </div>
+            )}
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="总评分" value={`${result.score}/100`} detail={`等级 ${result.grade}`} tone={pass ? 'green' : 'red'} />
-        <MetricCard label="阻断问题" value={blockerCount} detail="必须修复后再提审" tone={blockerCount ? 'red' : 'green'} />
-        <MetricCard label="通过渠道" value={`${passedChannels}/${result.channelChecks.length}`} detail="基于已选渠道规则" tone="blue" />
-        <MetricCard label="targetSdk" value={result.apkInfo.targetSdkVersion ?? '-'} detail={result.checks.targetSdkOk ? '已达基础要求' : '低于基础要求'} tone={result.checks.targetSdkOk ? 'green' : 'amber'} />
+        <MetricCard label="总评分" value={scoreText} detail={gradeText} tone={parseError ? 'amber' : pass ? 'green' : 'red'} />
+        <MetricCard label="阻断问题" value={parseError ? '不可用' : blockerCount} detail={parseError ? '解析失败不做阻断判定' : '必须修复后再提审'} tone={blockerCount ? 'red' : parseError ? 'amber' : 'green'} />
+        <MetricCard label="通过渠道" value={parseError ? '不可用' : `${passedChannels}/${result.channelChecks.length}`} detail={parseError ? '渠道结论不可用' : '基于已选渠道规则'} tone={parseError ? 'amber' : 'blue'} />
+        <MetricCard label="targetSdk" value={display(result.apkInfo.targetSdkVersion)} detail={result.checks.targetSdkOk === null ? '未解析，不参与达标判定' : result.checks.targetSdkOk ? '已达基础要求' : '低于基础要求'} tone={result.checks.targetSdkOk === null ? 'amber' : result.checks.targetSdkOk ? 'green' : 'red'} />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[380px_1fr]">
@@ -74,16 +99,16 @@ export function ResultDashboard({ result }: { result: any }) {
             {[
               ['文件名', result.apkInfo.fileName],
               ['文件大小', result.apkInfo.fileSize],
-              ['包名', result.apkInfo.packageName || '-'],
-              ['versionName', result.apkInfo.versionName || '-'],
-              ['versionCode', result.apkInfo.versionCode || '-'],
-              ['minSdkVersion', result.apkInfo.minSdkVersion ?? '-'],
-              ['targetSdkVersion', result.apkInfo.targetSdkVersion ?? '-'],
-              ['签名', result.apkInfo.hasSignature ? '已检测到' : '异常/未确认']
+              ['packageName', result.apkInfo.packageName],
+              ['versionName', result.apkInfo.versionName],
+              ['versionCode', result.apkInfo.versionCode],
+              ['minSdkVersion', result.apkInfo.minSdkVersion],
+              ['targetSdkVersion', result.apkInfo.targetSdkVersion],
+              ['签名', result.apkInfo.hasSignature === null ? '未解析' : result.apkInfo.hasSignature ? '已检测到' : '异常/未确认']
             ].map(([k, v]) => (
               <div key={String(k)} className="flex justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3">
                 <dt className="text-slate-500">{k}</dt>
-                <dd className="max-w-[190px] truncate text-right font-semibold">{String(v)}</dd>
+                <dd className="max-w-[190px] truncate text-right font-semibold">{display(v)}</dd>
               </div>
             ))}
           </dl>
@@ -91,21 +116,23 @@ export function ResultDashboard({ result }: { result: any }) {
 
         <div className="glass-card p-6">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold">CPU 架构矩阵</h3>
-            <span className={result.checks.hasArm64 ? 'status-pass' : 'status-fail'}>{result.checks.hasArm64 ? '64 位已支持' : '64 位缺失'}</span>
+            <h3 className="text-lg font-bold">CPU 架构表</h3>
+            <span className={result.checks.hasArm64 === null ? 'status-warn' : result.checks.hasArm64 ? 'status-pass' : 'status-fail'}>
+              {result.checks.hasArm64 === null ? 'ABI 扫描失败' : result.checks.hasArm64 ? '64 位已支持' : '缺少 64 位'}
+            </span>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-5">
-            {Object.entries(result.abiInfo).map(([abi, exists]) => (
-              <div key={abi} className={exists ? 'rounded-3xl border border-emerald-200 bg-emerald-50 p-4' : 'rounded-3xl border border-slate-200 bg-slate-50 p-4'}>
+            {Object.entries(result.abiInfo).map(([abi, exists]: any) => (
+              <div key={abi} className={exists === true ? 'rounded-3xl border border-emerald-200 bg-emerald-50 p-4' : exists === null ? 'rounded-3xl border border-amber-200 bg-amber-50 p-4' : 'rounded-3xl border border-slate-200 bg-slate-50 p-4'}>
                 <div className="text-xs text-slate-500">{abi.includes('64') ? '64 位 ABI' : '32 位 ABI'}</div>
                 <div className="mt-2 text-sm font-black">{abi}</div>
-                <div className={exists ? 'mt-4 text-sm font-bold text-emerald-700' : 'mt-4 text-sm font-bold text-slate-400'}>{exists ? '存在' : '不存在'}</div>
+                <div className={exists === true ? 'mt-4 text-sm font-bold text-emerald-700' : exists === null ? 'mt-4 text-sm font-bold text-amber-700' : 'mt-4 text-sm font-bold text-slate-400'}>{abiDisplay(exists)}</div>
               </div>
             ))}
           </div>
 
           <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-4">
-            <h4 className="font-semibold">渠道规则检测</h4>
+            <h4 className="font-semibold">渠道检测结果</h4>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {result.channelChecks.map((channel: any) => (
                 <div key={channel.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -114,12 +141,10 @@ export function ResultDashboard({ result }: { result: any }) {
                       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-xs font-black text-white">{channel.logo}</div>
                       <div className="font-semibold">{channel.name}</div>
                     </div>
-                    <span className={channel.passed ? 'status-pass' : 'status-fail'}>{channel.passed ? '通过' : '不通过'}</span>
+                    <span className={channel.passed === null ? 'status-warn' : channel.passed ? 'status-pass' : 'status-fail'}>{channel.passed === null ? '不可用' : channel.passed ? '通过' : '不通过'}</span>
                   </div>
                   <div className="mt-3 text-sm text-slate-500">{channel.messages.join('；')}</div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-                    <div className={channel.passed ? 'h-full bg-emerald-500' : 'h-full bg-rose-500'} style={{ width: `${channel.score}%` }} />
-                  </div>
+                  <div className="mt-3 text-sm font-bold">评分：{channel.score === null ? '不可用' : channel.score}</div>
                 </div>
               ))}
             </div>
@@ -127,23 +152,37 @@ export function ResultDashboard({ result }: { result: any }) {
         </div>
       </section>
 
+      <section className="glass-card p-6">
+        <h3 className="text-lg font-bold">检测日志</h3>
+        <div className="mt-4 grid gap-3 md:grid-cols-5">
+          {result.detectionLogs.map((log: any) => (
+            <div key={log.key} className={log.status === 'success' ? 'rounded-3xl border border-emerald-200 bg-emerald-50 p-4' : 'rounded-3xl border border-amber-200 bg-amber-50 p-4'}>
+              <div className="text-sm font-black">{log.label}</div>
+              <div className={log.status === 'success' ? 'mt-2 text-sm font-bold text-emerald-700' : 'mt-2 text-sm font-bold text-amber-700'}>{logStatusText(log.status)}</div>
+              <p className="mt-2 text-xs leading-5 text-slate-600">{log.message}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="glass-card p-6">
+        <h3 className="text-lg font-bold">APK Hash</h3>
+        <div className="mt-4 space-y-3 rounded-3xl bg-slate-950 p-5 font-mono text-xs text-slate-100">
+          <div>MD5: {result.apkHash?.md5}</div>
+          <div>SHA1: {result.apkHash?.sha1}</div>
+          <div>SHA256: {result.apkHash?.sha256}</div>
+        </div>
+      </section>
+
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="glass-card p-6">
-          <h3 className="text-lg font-bold">风险雷达</h3>
+          <h3 className="text-lg font-bold">{parseError ? '解析失败原因' : '风险雷达'}</h3>
           <div className="mt-5 space-y-3">
-            {result.risks.length === 0 && (
-              <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-800">
-                未发现明显阻断或高风险项。
-              </div>
-            )}
+            {result.risks.length === 0 && <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-800">未发现明显阻断或高风险项。</div>}
             {result.risks.map((risk: any, index: number) => (
               <div key={index} className="rounded-3xl border border-slate-200 bg-white p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <span className={levelClass(risk.level)}>{risk.level}</span>
-                    <h4 className="mt-3 font-bold">{risk.title}</h4>
-                  </div>
-                </div>
+                <span className={levelClass(risk.level)}>{risk.level}</span>
+                <h4 className="mt-3 font-bold">{risk.title}</h4>
                 <p className="mt-2 text-sm leading-6 text-slate-500">{risk.detail}</p>
                 {risk.fix && <p className="mt-3 rounded-2xl bg-slate-50 p-3 text-sm leading-6 text-slate-700">整改：{risk.fix}</p>}
               </div>
@@ -169,17 +208,6 @@ export function ResultDashboard({ result }: { result: any }) {
           </div>
         </div>
       </section>
-
-      {result.httpUrls?.length > 0 && (
-        <section className="glass-card p-6">
-          <h3 className="text-lg font-bold">HTTP 明文地址样本</h3>
-          <div className="mt-4 max-h-72 overflow-auto rounded-3xl bg-slate-950 p-5">
-            {result.httpUrls.slice(0, 50).map((url: string, index: number) => (
-              <div key={index} className="border-b border-white/10 py-2 font-mono text-xs text-slate-200 last:border-0">{url}</div>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   )
 }

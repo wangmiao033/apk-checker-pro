@@ -2,8 +2,8 @@ import './globals.css'
 import type { Metadata, Viewport } from 'next'
 
 export const metadata: Metadata = {
-  title: 'APKFlow | APK 渠道提交前检测平台',
-  description: '高级 SaaS UI 版 APK 渠道提交前检测平台：64 位、targetSdk、权限、HTTP、Debug、签名、多渠道规则与报告。',
+  title: 'APKFlow 渠道提审检测平台',
+  description: '上传 APK，自动生成多渠道提交前检测报告。解析失败时不会输出误导性的渠道不通过结论。',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,

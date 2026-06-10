@@ -1,16 +1,54 @@
 export type AbiName = 'armeabi' | 'armeabi-v7a' | 'arm64-v8a' | 'x86' | 'x86_64'
-export type AbiInfo = Record<AbiName, boolean>
+export type AbiInfo = Record<AbiName, boolean | null>
+
+export type DetectionStatus = 'passed' | 'failed' | 'parse_error'
+export type DetectionMode = 'full' | 'degraded' | 'unavailable'
+export type LogStatus = 'success' | 'failed' | 'skipped'
+
+export type ApkHash = {
+  md5: string
+  sha1: string
+  sha256: string
+}
+
+export type DetectionLogItem = {
+  key: 'zip' | 'manifest' | 'abi' | 'signature' | 'http'
+  label: string
+  status: LogStatus
+  message: string
+}
+
+export type ToolHealth = {
+  unzip: boolean
+  aapt: boolean
+  apksigner: boolean
+  strings: boolean
+}
+
+export type EngineHealth = {
+  mode: DetectionMode
+  tools: ToolHealth
+  message: string
+  checkedAt: string
+}
+
+export type ReportMeta = {
+  reportId: string
+  detectedAt: string
+  ruleVersion: string
+  detectionMode: DetectionMode
+}
 
 export type ApkInfo = {
   fileName: string
   fileSize: string
   fileSizeBytes: number
-  packageName: string
-  versionCode: string
-  versionName: string
+  packageName: string | null
+  versionCode: string | null
+  versionName: string | null
   minSdkVersion: number | null
   targetSdkVersion: number | null
-  hasSignature: boolean
+  hasSignature: boolean | null
   parseSuccess: boolean
 }
 
@@ -27,29 +65,33 @@ export type ChannelCheck = {
   id: string
   name: string
   logo: string
-  passed: boolean
-  score: number
+  passed: boolean | null
+  score: number | null
   messages: string[]
 }
 
 export type AnalyzerChecks = {
-  hasArm64: boolean
-  targetSdkOk: boolean
-  isPure32Bit: boolean
-  hasHttp: boolean
-  hasDebugRisk: boolean
-  hasSensitivePermissions: boolean
-  hasSignature: boolean
-  hasCleartextRisk: boolean
-  hasAllowBackupRisk: boolean
+  hasArm64: boolean | null
+  targetSdkOk: boolean | null
+  isPure32Bit: boolean | null
+  hasHttp: boolean | null
+  hasDebugRisk: boolean | null
+  hasSensitivePermissions: boolean | null
+  hasSignature: boolean | null
+  hasCleartextRisk: boolean | null
+  hasAllowBackupRisk: boolean | null
 }
 
 export type AnalyzeResult = {
-  status: 'passed' | 'failed'
-  grade: 'A' | 'B' | 'C' | 'D'
-  score: number
+  status: DetectionStatus
+  grade: 'A' | 'B' | 'C' | 'D' | null
+  score: number | null
   summary: string
   generatedAt: string
+  reportMeta: ReportMeta
+  apkHash: ApkHash
+  engine: EngineHealth
+  detectionLogs: DetectionLogItem[]
   apkInfo: ApkInfo
   abiInfo: AbiInfo
   checks: AnalyzerChecks
