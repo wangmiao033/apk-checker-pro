@@ -142,8 +142,22 @@ export function UploadWorkspace() {
 
     try {
       const response = await fetch(analyzeApiUrl(), { method: 'POST', body: form })
-      const json = await response.json()
-      if (!response.ok) throw new Error(json.error || '检测失败')
+      const raw = await response.text()
+      let json: any = null
+      try {
+        json = raw ? JSON.parse(raw) : null
+      } catch {
+        json = null
+      }
+      if (!response.ok) {
+        if (response.status === 413) {
+          throw new Error(process.env.NEXT_PUBLIC_ANALYZE_API_URL
+            ? 'APK 文件超过检测后端上传限制，请检查后端 500MB 限制和网关 body size 配置。'
+            : '当前请求仍在使用 Vercel 演示接口，最大只支持 4MB。请配置 NEXT_PUBLIC_ANALYZE_API_URL 指向独立检测后端。')
+        }
+        throw new Error(json?.error || raw || '检测失败')
+      }
+      if (!json) throw new Error('检测接口返回了非 JSON 内容，请检查后端服务是否正常。')
 
       setResult(json)
       setActiveView('dashboard')
