@@ -1,0 +1,24 @@
+{
+  "name": "APKFlow 渠道提交前检测平台",
+  "short_name": "APKFlow",
+  "description": "上传 APK 自动检测 64 位、targetSdk、权限、HTTP、Debug、签名与渠道规则。",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#07111f",
+  "theme_color": "#07111f",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/icons/maskable.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
