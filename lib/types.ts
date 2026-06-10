@@ -199,6 +199,34 @@ export type ScoreBreakdownItem = {
   includedInScore: boolean
 }
 
+export type ReviewSummaryItem = {
+  key: 'fail' | 'warning' | 'pass' | 'parse_failed' | 'unknown'
+  label: string
+  count: number
+  ratio: number
+}
+
+export type CoverageItem = {
+  key: string
+  label: string
+  status: 'covered' | 'partial' | 'manual_review'
+  scope: string
+  limitation: string
+}
+
+export type SdkCategory = 'ad' | 'payment' | 'push' | 'analytics' | 'oaid'
+
+export type SdkFinding = {
+  id: string
+  name: string
+  category: SdkCategory
+  categoryLabel: string
+  matched: boolean
+  evidence: string[]
+  disclosureNote: string
+  suggestion: string
+}
+
 export type AnalyzeResult = {
   status: DetectionStatus
   submissionConclusion: {
@@ -236,6 +264,9 @@ export type AnalyzeResult = {
   debugKeywords: string[]
   detectionItems?: StandardDetectionItem[]
   scoreBreakdown?: ScoreBreakdownItem[]
+  reviewSummary?: ReviewSummaryItem[]
+  coverageItems?: CoverageItem[]
+  sdkFindings?: SdkFinding[]
   risks: RiskItem[]
   hardChecks: HardCheckItem[]
   privacyChecks: PrivacyCheckItem[]

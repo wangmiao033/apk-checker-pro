@@ -170,6 +170,88 @@ function findingsText(findings: any[]) {
   return findings.map(finding => finding.label || finding.key).join('；')
 }
 
+function summaryRows(result: any, issues: ReportIssue[]) {
+  if (Array.isArray(result.reviewSummary) && result.reviewSummary.length > 0) return result.reviewSummary
+  const rows = [
+    { key: 'fail', label: '严重问题', count: issues.filter(issue => issue.status === 'fail').length, ratio: 0 },
+    { key: 'warning', label: '一般风险', count: issues.filter(issue => issue.status === 'risk').length, ratio: 0 },
+    { key: 'pass', label: '通过项', count: issues.filter(issue => issue.status === 'pass').length, ratio: 0 },
+    { key: 'parse_failed', label: '解析失败', count: issues.filter(issue => issue.status === 'parse_error').length, ratio: 0 },
+    { key: 'unknown', label: '无法确认', count: issues.filter(issue => issue.status === 'info').length, ratio: 0 }
+  ]
+  const total = Math.max(rows.reduce((sum, row) => sum + row.count, 0), 1)
+  return rows.map(row => ({ ...row, ratio: Number(((row.count / total) * 100).toFixed(1)) }))
+}
+
+function coverageStatusLabel(status?: string) {
+  if (status === 'covered') return '已覆盖'
+  if (status === 'partial') return '部分覆盖'
+  return '人工复核'
+}
+
+function coverageStatusClass(status?: string) {
+  if (status === 'covered') return 'status-pass'
+  if (status === 'partial') return 'status-warn'
+  return 'status-info'
+}
+
+function ReviewSummaryTable({ result, issues }: { result: any; issues: ReportIssue[] }) {
+  const rows = summaryRows(result, issues)
+  return (
+    <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <h3 className="text-sm font-semibold text-slate-950">审核报告式摘要</h3>
+        <p className="mt-1 text-xs text-slate-500">按当前静态检测分段统计数量和占比，便于运营归档。</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-slate-200 text-sm">
+          <thead className="bg-white text-xs text-slate-500">
+            <tr>
+              <th className="whitespace-nowrap px-4 py-3 text-left font-semibold">统计项</th>
+              {rows.map((row: any) => <th key={row.key} className="whitespace-nowrap px-4 py-3 text-center font-semibold">{row.label}</th>)}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200 text-slate-900">
+            <tr>
+              <td className="whitespace-nowrap px-4 py-3 text-xs font-semibold text-slate-500">数量</td>
+              {rows.map((row: any) => <td key={row.key} className="px-4 py-3 text-center font-semibold">{row.count}</td>)}
+            </tr>
+            <tr>
+              <td className="whitespace-nowrap px-4 py-3 text-xs font-semibold text-slate-500">占比</td>
+              {rows.map((row: any) => <td key={row.key} className="px-4 py-3 text-center text-slate-600">{row.ratio}%</td>)}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function CoverageScope({ result }: { result: any }) {
+  const items = Array.isArray(result.coverageItems) ? result.coverageItems : []
+  if (!items.length) return null
+  return (
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+        <h3 className="text-lg font-semibold text-slate-950">检测覆盖范围说明</h3>
+        <p className="mt-1 text-sm text-slate-500">说明本次静态检测覆盖内容和判断边界，避免把静态命中误读成最终审核结论。</p>
+      </div>
+      <div className="grid gap-3 p-4 md:grid-cols-2">
+        {items.map((item: any) => (
+          <div key={item.key} className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <h4 className="text-sm font-semibold text-slate-950">{item.label}</h4>
+              <span className={coverageStatusClass(item.status)}>{coverageStatusLabel(item.status)}</span>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-slate-700">{item.scope}</p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">{item.limitation}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function buildIssueGroups(result: any): IssueGroup[] {
   if (Array.isArray(result.detectionItems) && result.detectionItems.length > 0) {
     const groupDefs = [
@@ -180,6 +262,7 @@ function buildIssueGroups(result: any): IssueGroup[] {
       { id: 'privacy', title: '权限与隐私风险', description: '敏感权限、隐私政策披露和权限最小化建议。', categories: ['permissions'] },
       { id: 'debug', title: 'Debug / 测试包风险', description: 'debuggable、测试配置和正式包风险。', categories: ['debug'] },
       { id: 'http', title: 'HTTP 明文与网络安全', description: 'usesCleartextTraffic、networkSecurityConfig 和 http:// 地址。', categories: ['http'] },
+      { id: 'sdk', title: 'SDK 识别', description: '广告、支付、推送、统计、OAID 静态识别和披露核对建议。', categories: ['sdk'] },
       { id: 'signature', title: '签名信息', description: '签名状态、签名方案、证书摘要和 Debug 签名。', categories: ['signature'] },
       { id: 'icon', title: '图标与资源', description: '应用名、图标、roundIcon、adaptive icon 和默认图标风险。', categories: ['icon'] },
       { id: 'size', title: '包体大小分析', description: 'assets、lib、dex、res 和 Top 大文件。', categories: ['size'] },
@@ -594,6 +677,8 @@ export function ResultDashboard({ result }: { result: any }) {
           <MetricCard label="解析失败" value={parseErrorCount} detail={parseError ? '请重新上传或检查 APK' : '未解析项数量'} tone={parseErrorCount > 0 ? 'amber' : 'blue'} />
         </div>
 
+        <ReviewSummaryTable result={result} issues={allIssues} />
+
         <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-700">
           建议动作：{actionText}
         </div>
@@ -625,6 +710,8 @@ export function ResultDashboard({ result }: { result: any }) {
           </div>
         )}
       </section>
+
+      <CoverageScope result={result} />
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -686,7 +773,7 @@ export function ResultDashboard({ result }: { result: any }) {
         <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
           <ExportActionButton
             title="下载报告"
-            description="导出 HTML 报告，适合留档或发给非研发同事查看。"
+            description="导出 A4 HTML 审核报告，可直接归档，也可用浏览器打印另存 PDF。"
             onClick={() => downloadText(exportFileName(result, 'html'), result.htmlReport || result.fullReportText || '', 'text/html;charset=utf-8')}
           />
           <ExportActionButton

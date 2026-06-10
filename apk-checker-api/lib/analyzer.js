@@ -85,6 +85,19 @@ const PRIVACY_RESOURCE_KEYWORDS = ['privacy', 'agreement', 'policy', 'user_agree
 const WEAK_PRIVACY_BUTTON_KEYWORDS = ['好的', '我知道了', '确认', '取消']
 const COLLECTION_KEYWORDS = ['IMEI', 'IMSI', 'OAID', 'AAID', 'Android ID', 'ANDROID_ID', 'MAC', 'getDeviceId', 'getImei', 'getMac', 'getOAID', 'getAdvertisingIdInfo', 'getInstalledPackages', 'getRunningTasks', 'TelephonyManager', 'WifiInfo', 'DeviceInfo', 'MSA']
 
+const SDK_RULES = [
+  { id: 'ad_pangle', name: '穿山甲 / Pangle', category: 'ad', categoryLabel: '广告', keywords: ['com.bytedance.sdk.openadsdk', 'TTAdSdk', 'pangle', 'bytedance.sdk.openadsdk'], disclosureNote: '广告 SDK 需要在隐私政策和第三方 SDK 清单中说明用途、收集信息类型和第三方主体。', suggestion: '请确认广告 SDK 是否在用户同意隐私政策后初始化，并补齐广告 SDK 披露信息。' },
+  { id: 'ad_gdt', name: '优量汇 / GDT', category: 'ad', categoryLabel: '广告', keywords: ['com.qq.e.comm', 'GDTAdSdk', 'TencentGDT'], disclosureNote: '广告 SDK 需要在隐私政策和第三方 SDK 清单中说明用途、收集信息类型和第三方主体。', suggestion: '请确认优量汇/GDT SDK 初始化时机，并在 SDK 清单中补齐披露信息。' },
+  { id: 'ad_kwai', name: '快手广告', category: 'ad', categoryLabel: '广告', keywords: ['com.kwad.sdk', 'KsAdSDK', 'kuaishou'], disclosureNote: '广告 SDK 需要在隐私政策和第三方 SDK 清单中说明用途、收集信息类型和第三方主体。', suggestion: '请确认快手广告 SDK 初始化时机，并在 SDK 清单中补齐披露信息。' },
+  { id: 'ad_sigmob', name: 'Sigmob', category: 'ad', categoryLabel: '广告', keywords: ['com.sigmob', 'WindAds', 'sigmob'], disclosureNote: '广告 SDK 需要在隐私政策和第三方 SDK 清单中说明用途、收集信息类型和第三方主体。', suggestion: '请确认 Sigmob SDK 初始化时机，并在 SDK 清单中补齐披露信息。' },
+  { id: 'ad_topon', name: 'TopOn / AnyThink', category: 'ad', categoryLabel: '广告', keywords: ['com.anythink', 'ATSDK', 'AnyThink'], disclosureNote: '聚合广告 SDK 需要同步披露聚合平台及实际接入的广告网络。', suggestion: '请确认 TopOn/AnyThink 聚合广告 SDK 下游网络，并补齐第三方 SDK 清单。' },
+  { id: 'ad_vivo', name: 'vivo 联盟广告', category: 'ad', categoryLabel: '广告', keywords: ['com.vivo.mobilead', 'VivoAdManager', 'vivo_ad'], disclosureNote: '渠道广告 SDK 需要在 SDK 清单中披露用途和数据处理说明。', suggestion: '请确认 vivo 广告 SDK 是否用于渠道包，并补齐披露信息。' },
+  { id: 'payment_common', name: '支付 SDK', category: 'payment', categoryLabel: '支付', keywords: ['vivo_pay', 'com.vivo.unionsdk', 'com.alipay', 'com.tencent.mm.opensdk', 'WXPay', 'UPPayAssistEx', 'UnionPay'], disclosureNote: '支付 SDK 需要说明支付、订单处理、设备风控等数据用途。', suggestion: '请确认支付 SDK 的业务必要性、初始化时机和隐私政策披露。' },
+  { id: 'push_common', name: '推送 SDK', category: 'push', categoryLabel: '推送', keywords: ['com.vivo.push', 'com.heytap.msp.push', 'com.huawei.hms.push', 'com.xiaomi.mipush', 'com.meizu.cloud.pushsdk', 'JPushInterface', 'com.igexin.sdk'], disclosureNote: '推送 SDK 需要说明消息推送、设备标识和通知权限相关用途。', suggestion: '请确认推送 SDK 是否按业务需要接入，并在用户授权后处理通知相关能力。' },
+  { id: 'analytics_common', name: '统计 / 崩溃分析 SDK', category: 'analytics', categoryLabel: '统计', keywords: ['MobclickAgent', 'com.umeng.analytics', 'SensorsDataAPI', 'com.sensorsdata.analytics', 'FirebaseAnalytics', 'Bugly', 'CrashReport', 'TalkingData', 'GrowingIO'], disclosureNote: '统计和崩溃分析 SDK 需要说明采集指标、设备信息和日志用途。', suggestion: '请确认统计/崩溃 SDK 在用户同意后初始化，并补齐 SDK 清单披露。' },
+  { id: 'oaid_msa', name: 'OAID / MSA', category: 'oaid', categoryLabel: 'OAID', keywords: ['OAID', 'MSA', 'com.bun.miitmdid', 'JLibrary', 'IdSupplier', 'MSAIdentifier'], disclosureNote: 'OAID/MSA 用于设备标识，属于渠道隐私合规重点关注能力。', suggestion: '请确认 OAID/MSA SDK 在用户同意隐私政策后初始化，并在隐私政策中说明用途。' }
+]
+
 function execTool(command, args, timeout = 25000) {
   try {
     return {
@@ -455,6 +468,57 @@ function keywordFindings(source, keywords, limit = 30) {
     }))
 }
 
+function buildSdkFindings(source) {
+  const lower = source.toLowerCase()
+  return SDK_RULES
+    .map(rule => {
+      const evidence = unique(rule.keywords.filter(keyword => lower.includes(keyword.toLowerCase())))
+      return {
+        id: rule.id,
+        name: rule.name,
+        category: rule.category,
+        categoryLabel: rule.categoryLabel,
+        matched: evidence.length > 0,
+        evidence,
+        disclosureNote: rule.disclosureNote,
+        suggestion: rule.suggestion
+      }
+    })
+    .filter(item => item.matched)
+}
+
+function buildReviewSummary(items) {
+  const rows = [
+    { key: 'fail', label: '严重问题', count: 0, ratio: 0 },
+    { key: 'warning', label: '一般风险', count: 0, ratio: 0 },
+    { key: 'pass', label: '通过项', count: 0, ratio: 0 },
+    { key: 'parse_failed', label: '解析失败', count: 0, ratio: 0 },
+    { key: 'unknown', label: '无法确认', count: 0, ratio: 0 }
+  ]
+  const byKey = new Map(rows.map(row => [row.key, row]))
+  for (const item of items) {
+    if (item.status === 'fail') byKey.get('fail').count += 1
+    else if (item.status === 'warning') byKey.get('warning').count += 1
+    else if (item.status === 'pass') byKey.get('pass').count += 1
+    else if (item.status === 'parse_failed') byKey.get('parse_failed').count += 1
+    else byKey.get('unknown').count += 1
+  }
+  const total = Math.max(items.length, 1)
+  return rows.map(row => ({ ...row, ratio: Number(((row.count / total) * 100).toFixed(1)) }))
+}
+
+function buildCoverageItems(input) {
+  return [
+    { key: 'apk_manifest', label: 'APK 基础信息 / Manifest', status: input.manifestOk ? 'covered' : 'partial', scope: '包名、应用名、版本号、minSdkVersion、targetSdkVersion、compileSdkVersion。', limitation: 'Manifest 无法解析时，本项只保留文件名、大小和 Hash。' },
+    { key: 'abi', label: 'ABI / 64 位包体', status: input.abiScanOk ? 'covered' : 'partial', scope: '基于 APK 内 lib/ 目录识别 armeabi-v7a、arm64-v8a、x86、x86_64 和 so 数量。', limitation: '只判断包体内静态文件分布，不判断设备运行表现。' },
+    { key: 'target_sdk', label: 'targetSdkVersion / 渠道规则', status: input.targetSdkVersion === null ? 'partial' : 'covered', scope: '读取 targetSdkVersion，并与当前选择的渠道规则阈值对比。', limitation: '只覆盖已配置渠道规则，不替代渠道后台实时政策。' },
+    { key: 'privacy_permissions', label: '权限与隐私关键词', status: input.permissionsOk || input.stringsOk ? 'covered' : 'partial', scope: 'Manifest 权限、隐私弹窗资源关键词、设备标识和采集能力关键词。', limitation: '静态命中只能说明存在能力或资源，授权弹窗流程和上报时机需人工复核。' },
+    { key: 'security', label: '安全配置', status: input.httpScanOk ? 'covered' : 'partial', scope: 'debuggable、usesCleartextTraffic、networkSecurityConfig、HTTP 明文地址、allowBackup 关键词。', limitation: '只覆盖 APK 静态配置和字符串，不判断服务端接口真实行为。' },
+    { key: 'signature_icon_size', label: '签名 / 图标 / 包体大小', status: input.signatureOk ? 'covered' : 'partial', scope: '签名状态、签名方案、证书摘要、应用图标、资源密度、包体 Top 文件。', limitation: '签名工具不可用时只保留有限判断；图标素材质量仍需人工审核。' },
+    { key: 'sdk_static', label: 'SDK 静态识别', status: input.stringsOk ? 'covered' : 'partial', scope: `广告、支付、推送、统计、OAID 关键词识别；本次命中 ${input.sdkFindingCount} 类/项。`, limitation: '识别结果用于核对第三方 SDK 清单，不直接等同违规。' }
+  ]
+}
+
 function buildPrivacyChecks(permissions, combined) {
   const permissionFindings = PRIVACY_PERMISSION_RULES
     .filter(rule => rule.fuzzy
@@ -476,7 +540,7 @@ function buildPrivacyChecks(permissions, combined) {
   const collectionFindings = keywordFindings(combined, COLLECTION_KEYWORDS, 40).map(item => ({
     ...item,
     detail: `静态扫描命中采集能力关键词：${item.label}。`,
-    suggestion: '静态检测只能说明具备采集能力，需要真机验证用户同意前是否采集或上报。'
+    suggestion: '静态检测只能说明具备采集能力，需要通过运行时抓包或日志验证用户同意前是否采集或上报。'
   }))
 
   return [
@@ -512,8 +576,8 @@ function buildPrivacyChecks(permissions, combined) {
       status: collectionFindings.length ? 'high_risk' : 'found',
       level: collectionFindings.length ? 'high' : 'info',
       description: collectionFindings.length
-        ? '发现设备标识、应用列表、运行任务、网络信息等采集能力关键词。静态检测不能直接判定违规，但需要重点真机验证用户同意前是否采集或上报。'
-        : '未命中本轮授权前采集能力关键词，但仍需以真机抓包和运行时日志验证为准。',
+        ? '发现设备标识、应用列表、运行任务、网络信息等采集能力关键词。静态检测不能直接判定违规，但需要重点通过运行时抓包或日志验证用户同意前是否采集或上报。'
+        : '未命中本轮授权前采集能力关键词，但仍需以运行时抓包和日志验证为准。',
       findings: collectionFindings,
       suggestion: collectionFindings.length
         ? '用户点击同意隐私政策前，不得初始化广告 SDK、统计 SDK、登录 SDK、支付 SDK、OAID/MSA SDK、TapTap SDK 等可能采集个人信息的模块。Unity 游戏建议在 UnityPlayerActivity 前增加 PrivacyActivity，先完成隐私授权，再启动 UnityPlayerActivity。'
@@ -652,6 +716,30 @@ function buildDetectionItems(input) {
   }
 
   items.push(createItem({
+    id: 'sdk_static_identification',
+    category: 'sdk',
+    title: 'SDK 静态识别',
+    status: 'pass',
+    severity: 'info',
+    currentValue: input.sdkFindings.length
+      ? input.sdkFindings.map(item => `${item.categoryLabel}：${item.name}（命中：${item.evidence.slice(0, 6).join('、')}）`).join('\n')
+      : '未命中本轮广告、支付、推送、统计、OAID 重点 SDK 关键词。',
+    expectedValue: '第三方 SDK 需要在隐私政策和 SDK 清单中披露用途、收集信息类型、第三方主体、官网或隐私政策链接，并确认用户同意后初始化。',
+    evidence: input.sdkFindings.length
+      ? input.sdkFindings.map(item => `${item.name}: ${item.evidence.join(', ')}`).join('\n')
+      : 'strings / unzip / Manifest 静态扫描未命中重点 SDK 关键词。',
+    risk: input.sdkFindings.length
+      ? 'SDK 命中结果用于运营核对第三方 SDK 清单和隐私政策披露，不直接等同违规或不通过。'
+      : '未发现重点 SDK 关键词，但混淆、动态加载或资源压缩可能导致静态识别遗漏。',
+    suggestion: input.sdkFindings.length
+      ? '请将命中的 SDK 逐项核对到隐私政策与第三方 SDK 清单，重点确认广告、统计、支付、推送和 OAID 初始化时机。'
+      : '如业务确实接入第三方 SDK，请人工核对 SDK 清单，避免因混淆或动态加载漏检。',
+    devInstruction: input.sdkFindings.length
+      ? input.sdkFindings.map(item => `${item.name}：${item.suggestion}`).join('\n')
+      : '无需整改；如业务侧确认存在 SDK，请补充 SDK 清单后复测。'
+  }))
+
+  items.push(createItem({
     id: 'signature',
     category: 'signature',
     title: input.signatureInfo.status === 'signed' ? '签名信息检查' : '签名信息无法确认',
@@ -713,7 +801,7 @@ function buildSubmissionConclusion(status, hardChecks, privacyChecks, risks) {
   const hasHighOrWarning = risks.some(item => item.level === 'high' || item.level === 'medium')
 
   if (hasBlocker) return { status: 'blocked', title: '阻断，需要重新出包', summary: 'APK 存在 targetSdkVersion 或 64 位包体等阻断问题，当前不应提交渠道，需要研发重新打包。', level: 'blocker' }
-  if (noPrivacyDialog && hasCollectionRisk) return { status: 'not_recommended', title: '不建议提交', summary: '未发现明确隐私弹窗资源，同时发现设备标识或 SDK 采集能力，建议先完成隐私授权流程整改和真机验证。', level: 'high' }
+  if (noPrivacyDialog && hasCollectionRisk) return { status: 'not_recommended', title: '不建议提交', summary: '未发现明确隐私弹窗资源，同时发现设备标识或 SDK 采集能力，建议先完成隐私授权流程整改，并通过运行时抓包或日志验证。', level: 'high' }
   if (hasHighOrWarning) return { status: 'risk', title: '有风险', summary: '硬性项未发现阻断问题，但仍存在隐私、权限、HTTP 或 SDK 初始化相关风险，建议整改后提交。', level: 'medium' }
   return { status: 'passed', title: '通过', summary: '硬性检测项通过，未发现明显高风险项，可进入渠道提交前复核。', level: 'info' }
 }
@@ -834,6 +922,65 @@ function buildOperationMessage(result) {
   return `该 APK 当前存在上架风险，${result.submissionConclusion.status === 'blocked' ? '需要重新出包' : '暂不建议直接提交'}。主要原因是 ${blockers.join('；') || result.failReasons.join('；') || '存在隐私合规高风险项'}。需要研发重新打包，并确认首次启动隐私授权、SDK 初始化时机、权限申请和第三方 SDK 披露情况。${warnings.length ? `需关注：${warnings.join('；')}。` : ''}`
 }
 
+function statusText(status) {
+  if (status === 'fail') return '不通过'
+  if (status === 'warning') return '一般风险'
+  if (status === 'pass') return '通过'
+  if (status === 'parse_failed') return '解析失败'
+  if (status === 'unsupported') return '当前工具不支持检测'
+  if (status === 'error') return '系统错误'
+  return '无法确认'
+}
+
+function summaryRowsForReport(result) {
+  if (Array.isArray(result.reviewSummary) && result.reviewSummary.length) return result.reviewSummary
+  const items = result.detectionItems || []
+  const rows = [
+    { key: 'fail', label: '严重问题', count: items.filter(item => item.status === 'fail').length, ratio: 0 },
+    { key: 'warning', label: '一般风险', count: items.filter(item => item.status === 'warning').length, ratio: 0 },
+    { key: 'pass', label: '通过项', count: items.filter(item => item.status === 'pass').length, ratio: 0 },
+    { key: 'parse_failed', label: '解析失败', count: items.filter(item => item.status === 'parse_failed').length, ratio: 0 },
+    { key: 'unknown', label: '无法确认', count: items.filter(item => !['fail', 'warning', 'pass', 'parse_failed'].includes(item.status)).length, ratio: 0 }
+  ]
+  const total = Math.max(items.length, 1)
+  return rows.map(row => ({ ...row, ratio: Number(((row.count / total) * 100).toFixed(1)) }))
+}
+
+function summaryMarkdown(result) {
+  const rows = summaryRowsForReport(result)
+  return [
+    '| 统计项 | ' + rows.map(row => row.label).join(' | ') + ' |',
+    '| --- | ' + rows.map(() => '---:').join(' | ') + ' |',
+    '| 数量 | ' + rows.map(row => String(row.count)).join(' | ') + ' |',
+    '| 占比 | ' + rows.map(row => `${row.ratio}%`).join(' | ') + ' |'
+  ].join('\n')
+}
+
+function coverageStatusText(status) {
+  if (status === 'covered') return '已覆盖'
+  if (status === 'partial') return '部分覆盖'
+  return '人工复核'
+}
+
+function coverageMarkdown(result) {
+  if (!Array.isArray(result.coverageItems) || !result.coverageItems.length) return '暂无覆盖范围说明。'
+  return [
+    '| 检测范围 | 状态 | 覆盖内容 | 判断边界 |',
+    '| --- | --- | --- | --- |',
+    ...result.coverageItems.map(item => `| ${item.label} | ${coverageStatusText(item.status)} | ${item.scope} | ${item.limitation} |`)
+  ].join('\n')
+}
+
+function sdkMarkdown(result) {
+  const findings = result.sdkFindings || []
+  if (!findings.length) return '未命中本轮广告、支付、推送、统计、OAID 重点 SDK 关键词。该结论仅代表静态识别结果，混淆或动态加载可能导致遗漏。'
+  return [
+    '| 类型 | SDK | 命中证据 | 披露说明 | 建议 |',
+    '| --- | --- | --- | --- | --- |',
+    ...findings.map(item => `| ${item.categoryLabel} | ${item.name} | ${item.evidence.join('、')} | ${item.disclosureNote} | ${item.suggestion} |`)
+  ].join('\n')
+}
+
 function buildMarkdownReport(result) {
   if (Array.isArray(result.detectionItems) && result.detectionItems.length) {
     const scoreLines = (result.scoreBreakdown || [])
@@ -864,6 +1011,14 @@ function buildMarkdownReport(result) {
       `- 检测时间：${result.reportMeta.detectedAt}`,
       `- 当前使用的渠道规则：${(result.currentChannelRules || []).map(rule => `${rule.name}(targetSdk>=${rule.targetSdkMin})`).join('、') || '未记录'}`,
       '',
+      '## 测试报告概述',
+      '',
+      summaryMarkdown(result),
+      '',
+      '## 检测覆盖范围说明',
+      '',
+      coverageMarkdown(result),
+      '',
       '## 评分明细',
       '',
       scoreLines,
@@ -873,6 +1028,12 @@ function buildMarkdownReport(result) {
       section('渠道提审关键项', ['target_sdk', 'abi', 'debug', 'http', 'signature']),
       '',
       section('权限与隐私风险', ['permissions']),
+      '',
+      '## SDK 静态识别',
+      '',
+      sdkMarkdown(result),
+      '',
+      section('SDK 识别分段', ['sdk']),
       '',
       section('图标与资源', ['icon']),
       '',
@@ -933,19 +1094,94 @@ function buildMarkdownReport(result) {
 }
 
 function buildHtmlReport(result) {
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>APKFlow 检测报告</title></head><body>
-<h1>APKFlow 检测报告</h1>
-<p>报告编号：${esc(result.reportMeta.reportId)}</p>
-<p>检测时间：${esc(result.reportMeta.detectedAt)}</p>
-<p>规则版本：${esc(result.reportMeta.ruleVersion)}</p>
-<p>检测模式：${esc(result.reportMeta.detectionMode)}</p>
-<p>状态：${esc(result.status)}；评分：${result.score == null ? '评分不可用' : esc(result.score)}</p>
-<h2>硬性检测项</h2><pre>${esc(JSON.stringify(result.hardChecks || [], null, 2))}</pre>
-<h2>隐私合规风险</h2><pre>${esc(JSON.stringify(result.privacyChecks || [], null, 2))}</pre>
-<h2>APK Hash</h2><pre>${esc(JSON.stringify(result.apkHash, null, 2))}</pre>
-<h2>扫描日志</h2><pre>${esc(JSON.stringify(result.detectionLogs, null, 2))}</pre>
-<h2>报告详情</h2><pre>${esc(JSON.stringify(result, null, 2))}</pre>
-</body></html>`
+  const detectionItems = result.detectionItems || []
+  const itemRows = detectionItems.map(item => `<tr><td>${esc(statusText(item.status))}</td><td>${esc(item.severity)}</td><td>${esc(item.category)}</td><td>${esc(item.title)}</td><td>${esc(item.currentValue)}</td><td>${esc(item.expectedValue)}</td><td>${esc(item.risk)}</td><td>${esc(item.devInstruction || item.suggestion)}</td></tr>`).join('')
+  const scoreRows = (result.scoreBreakdown || []).map(item => `<tr><td>${esc(item.title)}</td><td>${esc(statusText(item.status))}</td><td>${item.includedInScore ? `-${item.deduction}` : '未纳入评分'}</td><td>${esc(item.reason)}</td></tr>`).join('')
+  const summary = summaryRowsForReport(result)
+  const summaryHead = summary.map(item => `<th>${esc(item.label)}</th>`).join('')
+  const summaryCounts = summary.map(item => `<td>${esc(item.count)}</td>`).join('')
+  const summaryRatios = summary.map(item => `<td>${esc(item.ratio)}%</td>`).join('')
+  const coverageRows = (result.coverageItems || []).map(item => `<tr><td>${esc(item.label)}</td><td>${esc(coverageStatusText(item.status))}</td><td>${esc(item.scope)}</td><td>${esc(item.limitation)}</td></tr>`).join('')
+  const sdkRows = (result.sdkFindings || []).length
+    ? (result.sdkFindings || []).map(item => `<tr><td>${esc(item.categoryLabel)}</td><td>${esc(item.name)}</td><td>${esc(item.evidence.join('、'))}</td><td>${esc(item.disclosureNote)}</td><td>${esc(item.suggestion)}</td></tr>`).join('')
+    : '<tr><td colspan="5">未命中本轮广告、支付、推送、统计、OAID 重点 SDK 关键词。该结论仅代表静态识别结果，混淆或动态加载可能导致遗漏。</td></tr>'
+  const channelRuleRows = (result.currentChannelRules || []).map(rule => `<tr><td>${esc(rule.name)}</td><td>${esc(rule.targetSdkMin)}</td><td>${rule.requireArm64 ? '是' : '否'}</td><td>${rule.allowDebuggable ? '允许' : '不允许'}</td><td>${rule.allowCleartextTraffic ? '允许' : '不允许'}</td></tr>`).join('')
+  const topFiles = result.sizeAnalysis && Array.isArray(result.sizeAnalysis.topFiles)
+    ? result.sizeAnalysis.topFiles.map(file => `<tr><td>${esc(file.path)}</td><td>${esc(file.size)}</td></tr>`).join('')
+    : ''
+
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>APKFlow 检测报告</title>
+<style>
+@page{size:A4;margin:16mm}
+*{box-sizing:border-box}
+body{margin:0;background:#e5e7eb;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",Arial,sans-serif;font-size:13px;line-height:1.6}
+.page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:18mm 16mm}
+.report-head{border-bottom:2px solid #111827;padding-bottom:14px;margin-bottom:16px}
+.eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;font-weight:700}
+h1{margin:4px 0 8px;font-size:24px;line-height:1.25}
+h2{margin:0;font-size:16px}
+.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 18px;color:#475569}
+.conclusion{border:1px solid #d1d5db;background:#f8fafc;padding:14px;margin:14px 0}
+.conclusion-title{font-size:18px;font-weight:800;color:#111827}
+.score{font-size:20px;font-weight:800}
+.section{margin-top:18px;break-inside:avoid}
+.section-title{background:#d9d9d9;color:#111827;font-size:15px;font-weight:800;padding:7px 10px;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th,td{border:1px solid #d6d9de;padding:7px 8px;text-align:left;vertical-align:top;white-space:pre-wrap;word-break:break-word}
+th{background:#f3f4f6;font-weight:800;color:#111827}
+.summary-table th,.summary-table td{text-align:center}
+.summary-table th:first-child,.summary-table td:first-child{text-align:left;width:22%}
+.muted{color:#64748b}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.box{border:1px solid #d6d9de;padding:10px;break-inside:avoid}
+pre{margin:0;white-space:pre-wrap;font-family:inherit;line-height:1.7}
+.footer{margin-top:22px;border-top:1px solid #111827;padding-top:8px;text-align:right;color:#475569;font-size:12px}
+@media screen{.page{margin:24px auto;box-shadow:0 8px 28px rgba(15,23,42,.12)}}
+@media print{body{background:#fff}.page{width:auto;min-height:auto;margin:0;padding:0;box-shadow:none}.section{page-break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="page">
+<header class="report-head">
+  <div class="eyebrow">APK CHANNEL PRECHECK</div>
+  <h1>APKFlow 渠道上架前 APK 风险检测报告</h1>
+  <div class="meta">
+    <div>报告编号：${esc(result.reportMeta.reportId)}</div>
+    <div>检测时间：${esc(result.reportMeta.detectedAt)}</div>
+    <div>规则版本：${esc(result.reportMeta.ruleVersion)}</div>
+    <div>检测模式：${esc(result.reportMeta.detectionMode)}</div>
+  </div>
+</header>
+<section class="conclusion">
+  <div class="conclusion-title">检测结论：${esc(result.submissionConclusion.title)}</div>
+  <p>${esc(result.submissionConclusion.summary)}</p>
+  <div class="score">辅助评分：${result.score == null ? '不可用' : `${esc(result.score)}/100`}</div>
+  <p class="muted">说明：辅助评分仅用于内部参考，不替代渠道审核结论。</p>
+</section>
+<section class="section"><div class="section-title">测试报告概述</div><table class="summary-table"><tr><th>统计项</th>${summaryHead}</tr><tr><td>数量</td>${summaryCounts}</tr><tr><td>占比</td>${summaryRatios}</tr></table></section>
+<section class="section"><div class="section-title">APK 基础信息</div><table>
+<tr><th>文件名</th><td>${esc(result.apkInfo.fileName)}</td><th>文件大小</th><td>${esc(result.apkInfo.fileSize)}</td></tr>
+<tr><th>应用名</th><td>${esc(display(result.apkInfo.appLabel || result.apkInfo.appName))}</td><th>包名</th><td>${esc(display(result.apkInfo.packageName))}</td></tr>
+<tr><th>版本号</th><td>${esc(display(result.apkInfo.versionName))} / ${esc(display(result.apkInfo.versionCode))}</td><th>targetSdkVersion</th><td>${esc(display(result.apkInfo.targetSdkVersion))}</td></tr>
+<tr><th>minSdkVersion</th><td>${esc(display(result.apkInfo.minSdkVersion))}</td><th>compileSdkVersion</th><td>${esc(display(result.apkInfo.compileSdkVersion))}</td></tr>
+<tr><th>SHA256</th><td colspan="3">${esc(result.apkHash.sha256)}</td></tr>
+</table></section>
+<section class="section"><div class="section-title">当前使用的渠道规则</div><table><tr><th>渠道</th><th>targetSdk 要求</th><th>要求 64 位</th><th>Debug</th><th>HTTP 明文</th></tr>${channelRuleRows || '<tr><td colspan="5">未记录</td></tr>'}</table></section>
+<section class="section"><div class="section-title">检测覆盖范围说明</div><table><tr><th>检测范围</th><th>状态</th><th>覆盖内容</th><th>判断边界</th></tr>${coverageRows || '<tr><td colspan="4">暂无覆盖范围说明</td></tr>'}</table></section>
+<section class="section"><div class="section-title">SDK 静态识别</div><table><tr><th>类型</th><th>SDK</th><th>命中证据</th><th>披露说明</th><th>建议</th></tr>${sdkRows}</table></section>
+<section class="section"><div class="section-title">评分明细</div><table><tr><th>检测项</th><th>状态</th><th>扣分</th><th>原因</th></tr>${scoreRows || '<tr><td colspan="4">暂无评分明细</td></tr>'}</table></section>
+<section class="section"><div class="section-title">分段检测详情</div><table><tr><th>状态</th><th>等级</th><th>模块</th><th>问题</th><th>当前检测值</th><th>规则要求</th><th>风险</th><th>整改建议</th></tr>${itemRows || '<tr><td colspan="8">暂无分段检测项</td></tr>'}</table></section>
+<section class="section"><div class="section-title">包体 Top 文件</div><table><tr><th>文件</th><th>大小</th></tr>${topFiles || '<tr><td colspan="2">暂无包体文件统计</td></tr>'}</table></section>
+<section class="section two-col"><div class="box"><h2>研发整改说明</h2><pre>${esc(result.developerMessage)}</pre></div><div class="box"><h2>运营同步话术</h2><pre>${esc(result.operationMessage)}</pre></div></section>
+<div class="footer">APKFlow 渠道提审检测平台 · 静态检测报告</div>
+</div>
+</body>
+</html>`
 }
 
 function analyzeApk(filePath, options = {}) {
@@ -1010,6 +1246,7 @@ function analyzeApk(filePath, options = {}) {
   const httpUrls = httpScanOk ? unique(Array.from(combined.matchAll(/http:\/\/[^\s"'<>\\)]+/g)).map(m => m[0])).slice(0, 100) : []
   const debugKeys = ['JYSL_DEBUG', 'IS_DEBUG', 'sandbox', 'staging', 'test_server']
   const debugKeywords = unique(debugKeys.filter(k => combined.includes(k)))
+  const sdkFindings = buildSdkFindings(combined)
   const availableRules = Array.isArray(options.channelRules) && options.channelRules.length ? options.channelRules : CHANNEL_RULES
   const selectedRules = Array.isArray(options.selectedChannelIds) && options.selectedChannelIds.length
     ? availableRules.filter(rule => options.selectedChannelIds.includes(rule.id))
@@ -1078,6 +1315,7 @@ function analyzeApk(filePath, options = {}) {
     sensitivePermissions,
     httpUrls,
     debugKeywords,
+    sdkFindings,
     hardChecks,
     privacyChecks,
     currentChannelRules: currentChannelRules(selectedRules)
@@ -1107,7 +1345,19 @@ function analyzeApk(filePath, options = {}) {
     signatureInfo,
     iconInfo,
     sizeAnalysis,
+    sdkFindings,
     exportedIssues
+  })
+  const reviewSummary = buildReviewSummary(detectionItems)
+  const coverageItems = buildCoverageItems({
+    manifestOk,
+    abiScanOk,
+    permissionsOk: permissionsDump.ok,
+    httpScanOk,
+    signatureOk,
+    stringsOk: stringsOutput.ok,
+    targetSdkVersion,
+    sdkFindingCount: sdkFindings.length
   })
 
   if (parseErrorReasons.length > 0) {
@@ -1122,6 +1372,8 @@ function analyzeApk(filePath, options = {}) {
       ...common,
       detectionItems,
       scoreBreakdown: scoreResult.breakdown,
+      reviewSummary,
+      coverageItems,
       risks: parseRisks,
       channelChecks: selectedRules.map(rule => ({ id: rule.id, name: rule.name, logo: rule.logo, passed: null, score: null, messages: ['解析失败，渠道结论不可用'] })),
       failReasons: parseErrorReasons
@@ -1198,7 +1450,7 @@ function analyzeApk(filePath, options = {}) {
         currentValue: item.findings.map(f => f.label).join('；'),
         expectedValue: '用户同意隐私政策后再初始化和采集',
         fix: item.suggestion,
-        operationNote: '授权前采集能力属于渠道重点关注项，建议完成真机抓包验证后再提交。'
+        operationNote: '授权前采集能力属于渠道重点关注项，建议完成运行时抓包或日志验证后再提交。'
       })
     }
   }
@@ -1258,6 +1510,8 @@ function analyzeApk(filePath, options = {}) {
     ...common,
     detectionItems,
     scoreBreakdown: scoreResult.breakdown,
+    reviewSummary,
+    coverageItems,
     risks,
     channelChecks,
     failReasons

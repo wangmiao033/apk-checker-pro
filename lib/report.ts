@@ -60,6 +60,57 @@ function scoreMarkdown(result: BaseResult) {
     .join('\n') || '未发现扣分项。'
 }
 
+function summaryRows(result: BaseResult) {
+  if (result.reviewSummary?.length) return result.reviewSummary
+  const items = result.detectionItems || []
+  const rows = [
+    { key: 'fail', label: '严重问题', count: items.filter(item => item.status === 'fail').length, ratio: 0 },
+    { key: 'warning', label: '一般风险', count: items.filter(item => item.status === 'warning').length, ratio: 0 },
+    { key: 'pass', label: '通过项', count: items.filter(item => item.status === 'pass').length, ratio: 0 },
+    { key: 'parse_failed', label: '解析失败', count: items.filter(item => item.status === 'parse_failed').length, ratio: 0 },
+    { key: 'unknown', label: '无法确认', count: items.filter(item => !['fail', 'warning', 'pass', 'parse_failed'].includes(item.status)).length, ratio: 0 }
+  ]
+  const total = Math.max(items.length, 1)
+  return rows.map(row => ({ ...row, ratio: Number(((row.count / total) * 100).toFixed(1)) }))
+}
+
+function summaryMarkdown(result: BaseResult) {
+  const rows = summaryRows(result)
+  return [
+    '| 统计项 | ' + rows.map(row => row.label).join(' | ') + ' |',
+    '| --- | ' + rows.map(() => '---:').join(' | ') + ' |',
+    '| 数量 | ' + rows.map(row => String(row.count)).join(' | ') + ' |',
+    '| 占比 | ' + rows.map(row => `${row.ratio}%`).join(' | ') + ' |'
+  ].join('\n')
+}
+
+function coverageStatusText(status: string) {
+  if (status === 'covered') return '已覆盖'
+  if (status === 'partial') return '部分覆盖'
+  return '人工复核'
+}
+
+function coverageMarkdown(result: BaseResult) {
+  if (!result.coverageItems?.length) return '暂无覆盖范围说明。'
+  return [
+    '| 检测范围 | 状态 | 覆盖内容 | 判断边界 |',
+    '| --- | --- | --- | --- |',
+    ...result.coverageItems.map(item => `| ${item.label} | ${coverageStatusText(item.status)} | ${item.scope} | ${item.limitation} |`)
+  ].join('\n')
+}
+
+function sdkMarkdown(result: BaseResult) {
+  const findings = result.sdkFindings || []
+  if (!findings.length) {
+    return '未命中本轮广告、支付、推送、统计、OAID 重点 SDK 关键词。该结论仅代表静态识别结果，混淆或动态加载可能导致遗漏。'
+  }
+  return [
+    '| 类型 | SDK | 命中证据 | 披露说明 | 建议 |',
+    '| --- | --- | --- | --- | --- |',
+    ...findings.map(item => `| ${item.categoryLabel} | ${item.name} | ${item.evidence.join('、')} | ${item.disclosureNote} | ${item.suggestion} |`)
+  ].join('\n')
+}
+
 function sectionItems(result: BaseResult, category: string) {
   return (result.detectionItems || []).filter(item => item.category === category)
 }
@@ -205,6 +256,14 @@ export function buildMarkdownReport(result: Omit<AnalyzeResult, 'htmlReport' | '
       `- 检测模式：${result.reportMeta.detectionMode}`,
       `- 当前使用的渠道规则：${result.currentChannelRules?.map(rule => `${rule.name}(targetSdk>=${rule.targetSdkMin})`).join('、') || '未记录'}`,
       '',
+      '## 测试报告概述',
+      '',
+      summaryMarkdown(result),
+      '',
+      '## 检测覆盖范围说明',
+      '',
+      coverageMarkdown(result),
+      '',
       '## 评分明细',
       '',
       scoreMarkdown(result),
@@ -218,6 +277,12 @@ export function buildMarkdownReport(result: Omit<AnalyzeResult, 'htmlReport' | '
       sectionMarkdown(result, 'targetSdkVersion 与安卓版本适配', ['target_sdk']),
       '',
       sectionMarkdown(result, '权限与隐私风险', ['permissions']),
+      '',
+      '## SDK 静态识别',
+      '',
+      sdkMarkdown(result),
+      '',
+      sectionMarkdown(result, 'SDK 识别分段', ['sdk']),
       '',
       sectionMarkdown(result, 'Debug / 测试包风险', ['debug']),
       '',
@@ -296,6 +361,15 @@ export function buildHtmlReport(result: Omit<AnalyzeResult, 'htmlReport'>): stri
     const itemRows = result.detectionItems.map(item => `<tr><td>${esc(statusText(item.status))}</td><td>${esc(item.severity)}</td><td>${esc(item.category)}</td><td>${esc(item.title)}</td><td>${esc(item.currentValue)}</td><td>${esc(item.expectedValue)}</td><td>${esc(item.risk)}</td><td>${esc(item.devInstruction || item.suggestion)}</td></tr>`).join('')
     const scoreRows = (result.scoreBreakdown || []).map(item => `<tr><td>${esc(item.title)}</td><td>${esc(statusText(item.status))}</td><td>${item.includedInScore ? `-${item.deduction}` : '未纳入评分'}</td><td>${esc(item.reason)}</td></tr>`).join('')
     const topFiles = result.sizeAnalysis?.topFiles.map(file => `<tr><td>${esc(file.path)}</td><td>${esc(file.size)}</td></tr>`).join('') || ''
+    const summary = summaryRows(result)
+    const summaryHead = summary.map(item => `<th>${esc(item.label)}</th>`).join('')
+    const summaryCounts = summary.map(item => `<td>${esc(item.count)}</td>`).join('')
+    const summaryRatios = summary.map(item => `<td>${esc(item.ratio)}%</td>`).join('')
+    const coverageRows = (result.coverageItems || []).map(item => `<tr><td>${esc(item.label)}</td><td>${esc(coverageStatusText(item.status))}</td><td>${esc(item.scope)}</td><td>${esc(item.limitation)}</td></tr>`).join('')
+    const sdkRows = (result.sdkFindings || []).length
+      ? (result.sdkFindings || []).map(item => `<tr><td>${esc(item.categoryLabel)}</td><td>${esc(item.name)}</td><td>${esc(item.evidence.join('、'))}</td><td>${esc(item.disclosureNote)}</td><td>${esc(item.suggestion)}</td></tr>`).join('')
+      : '<tr><td colspan="5">未命中本轮广告、支付、推送、统计、OAID 重点 SDK 关键词。该结论仅代表静态识别结果，混淆或动态加载可能导致遗漏。</td></tr>'
+    const channelRuleRows = (result.currentChannelRules || []).map(rule => `<tr><td>${esc(rule.name)}</td><td>${esc(rule.targetSdkMin)}</td><td>${rule.requireArm64 ? '是' : '否'}</td><td>${rule.allowDebuggable ? '允许' : '不允许'}</td><td>${rule.allowCleartextTraffic ? '允许' : '不允许'}</td></tr>`).join('')
 
     return `<!doctype html>
 <html lang="zh-CN">
@@ -304,26 +378,106 @@ export function buildHtmlReport(result: Omit<AnalyzeResult, 'htmlReport'>): stri
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>APKFlow 检测报告</title>
 <style>
-body{margin:0;background:#f6f7f9;color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",Arial,sans-serif}
-.header{background:#fff;border-bottom:1px solid #e5e7eb;padding:28px 40px}
-.container{max-width:1180px;margin:0 auto;padding:28px}
-.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;margin:16px 0;box-shadow:0 1px 2px rgba(15,23,42,.04)}
-.score{font-size:36px;font-weight:800}.muted{color:#64748b}
-table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #e5e7eb;padding:10px;text-align:left;font-size:13px;vertical-align:top;white-space:pre-wrap}
-th{background:#f8fafc;color:#475569}pre{white-space:pre-wrap;background:#f8fafc;border-radius:10px;padding:14px;line-height:1.7}
+@page{size:A4;margin:16mm}
+*{box-sizing:border-box}
+body{margin:0;background:#e5e7eb;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",Arial,sans-serif;font-size:13px;line-height:1.6}
+.page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:18mm 16mm}
+.report-head{border-bottom:2px solid #111827;padding-bottom:14px;margin-bottom:16px}
+.eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#64748b;font-weight:700}
+h1{margin:4px 0 8px;font-size:24px;line-height:1.25}
+h2{margin:0;font-size:16px}
+.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 18px;color:#475569}
+.conclusion{border:1px solid #d1d5db;background:#f8fafc;padding:14px;margin:14px 0}
+.conclusion-title{font-size:18px;font-weight:800;color:#111827}
+.score{font-size:20px;font-weight:800}
+.section{margin-top:18px;break-inside:avoid}
+.section-title{background:#d9d9d9;color:#111827;font-size:15px;font-weight:800;padding:7px 10px;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th,td{border:1px solid #d6d9de;padding:7px 8px;text-align:left;vertical-align:top;white-space:pre-wrap;word-break:break-word}
+th{background:#f3f4f6;font-weight:800;color:#111827}
+.summary-table th,.summary-table td{text-align:center}
+.summary-table th:first-child,.summary-table td:first-child{text-align:left;width:22%}
+.muted{color:#64748b}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.box{border:1px solid #d6d9de;padding:10px;break-inside:avoid}
+pre{margin:0;white-space:pre-wrap;font-family:inherit;line-height:1.7}
+.footer{margin-top:22px;border-top:1px solid #111827;padding-top:8px;text-align:right;color:#475569;font-size:12px}
+@media screen{.page{margin:24px auto;box-shadow:0 8px 28px rgba(15,23,42,.12)}}
+@media print{body{background:#fff}.page{width:auto;min-height:auto;margin:0;padding:0;box-shadow:none}.section{page-break-inside:avoid}}
 </style>
 </head>
 <body>
-<div class="header"><h1>APKFlow 检测报告</h1><p class="muted">${esc(result.reportMeta.detectedAt)} · ${esc(result.reportMeta.reportId)}</p></div>
-<div class="container">
-<div class="card"><div class="score">${esc(result.score === null ? '不可用' : `${result.score}/100`)}</div><h2>${esc(result.submissionConclusion.title)}</h2><p>${esc(result.submissionConclusion.summary)}</p></div>
-<div class="card"><h2>APK 基础信息</h2><p>文件：${esc(result.apkInfo.fileName)}，${esc(result.apkInfo.fileSize)}</p><p>应用名：${esc(display(result.apkInfo.appLabel || result.apkInfo.appName))}</p><p>包名：${esc(display(result.apkInfo.packageName))}</p><p>版本：${esc(display(result.apkInfo.versionName))} / ${esc(display(result.apkInfo.versionCode))}</p><p>minSdkVersion：${esc(display(result.apkInfo.minSdkVersion))}，targetSdkVersion：${esc(display(result.apkInfo.targetSdkVersion))}，compileSdkVersion：${esc(display(result.apkInfo.compileSdkVersion))}</p><p>SHA256：${esc(result.apkHash.sha256)}</p></div>
-<div class="card"><h2>当前使用的渠道规则</h2><pre>${esc(JSON.stringify(result.currentChannelRules || [], null, 2))}</pre></div>
-<div class="card"><h2>评分明细</h2><table><tr><th>检测项</th><th>状态</th><th>扣分</th><th>原因</th></tr>${scoreRows}</table></div>
-<div class="card"><h2>分段检测项</h2><table><tr><th>状态</th><th>等级</th><th>模块</th><th>问题</th><th>当前检测值</th><th>规则要求</th><th>风险</th><th>整改建议</th></tr>${itemRows}</table></div>
-<div class="card"><h2>包体 Top 文件</h2><table><tr><th>文件</th><th>大小</th></tr>${topFiles}</table></div>
-<div class="card"><h2>研发整改说明</h2><pre>${esc(result.developerMessage)}</pre></div>
-<div class="card"><h2>运营同步话术</h2><pre>${esc(result.operationMessage)}</pre></div>
+<div class="page">
+<header class="report-head">
+  <div class="eyebrow">APK CHANNEL PRECHECK</div>
+  <h1>APKFlow 渠道上架前 APK 风险检测报告</h1>
+  <div class="meta">
+    <div>报告编号：${esc(result.reportMeta.reportId)}</div>
+    <div>检测时间：${esc(result.reportMeta.detectedAt)}</div>
+    <div>规则版本：${esc(result.reportMeta.ruleVersion)}</div>
+    <div>检测模式：${esc(result.reportMeta.detectionMode)}</div>
+  </div>
+</header>
+
+<section class="conclusion">
+  <div class="conclusion-title">检测结论：${esc(result.submissionConclusion.title)}</div>
+  <p>${esc(result.submissionConclusion.summary)}</p>
+  <div class="score">辅助评分：${esc(result.score === null ? '不可用' : `${result.score}/100`)}</div>
+  <p class="muted">说明：辅助评分仅用于内部参考，不替代渠道审核结论。</p>
+</section>
+
+<section class="section">
+  <div class="section-title">测试报告概述</div>
+  <table class="summary-table"><tr><th>统计项</th>${summaryHead}</tr><tr><td>数量</td>${summaryCounts}</tr><tr><td>占比</td>${summaryRatios}</tr></table>
+</section>
+
+<section class="section">
+  <div class="section-title">APK 基础信息</div>
+  <table>
+    <tr><th>文件名</th><td>${esc(result.apkInfo.fileName)}</td><th>文件大小</th><td>${esc(result.apkInfo.fileSize)}</td></tr>
+    <tr><th>应用名</th><td>${esc(display(result.apkInfo.appLabel || result.apkInfo.appName))}</td><th>包名</th><td>${esc(display(result.apkInfo.packageName))}</td></tr>
+    <tr><th>版本号</th><td>${esc(display(result.apkInfo.versionName))} / ${esc(display(result.apkInfo.versionCode))}</td><th>targetSdkVersion</th><td>${esc(display(result.apkInfo.targetSdkVersion))}</td></tr>
+    <tr><th>minSdkVersion</th><td>${esc(display(result.apkInfo.minSdkVersion))}</td><th>compileSdkVersion</th><td>${esc(display(result.apkInfo.compileSdkVersion))}</td></tr>
+    <tr><th>SHA256</th><td colspan="3">${esc(result.apkHash.sha256)}</td></tr>
+  </table>
+</section>
+
+<section class="section">
+  <div class="section-title">当前使用的渠道规则</div>
+  <table><tr><th>渠道</th><th>targetSdk 要求</th><th>要求 64 位</th><th>Debug</th><th>HTTP 明文</th></tr>${channelRuleRows || '<tr><td colspan="5">未记录</td></tr>'}</table>
+</section>
+
+<section class="section">
+  <div class="section-title">检测覆盖范围说明</div>
+  <table><tr><th>检测范围</th><th>状态</th><th>覆盖内容</th><th>判断边界</th></tr>${coverageRows || '<tr><td colspan="4">暂无覆盖范围说明</td></tr>'}</table>
+</section>
+
+<section class="section">
+  <div class="section-title">SDK 静态识别</div>
+  <table><tr><th>类型</th><th>SDK</th><th>命中证据</th><th>披露说明</th><th>建议</th></tr>${sdkRows}</table>
+</section>
+
+<section class="section">
+  <div class="section-title">评分明细</div>
+  <table><tr><th>检测项</th><th>状态</th><th>扣分</th><th>原因</th></tr>${scoreRows || '<tr><td colspan="4">暂无评分明细</td></tr>'}</table>
+</section>
+
+<section class="section">
+  <div class="section-title">分段检测详情</div>
+  <table><tr><th>状态</th><th>等级</th><th>模块</th><th>问题</th><th>当前检测值</th><th>规则要求</th><th>风险</th><th>整改建议</th></tr>${itemRows}</table>
+</section>
+
+<section class="section">
+  <div class="section-title">包体 Top 文件</div>
+  <table><tr><th>文件</th><th>大小</th></tr>${topFiles || '<tr><td colspan="2">暂无包体文件统计</td></tr>'}</table>
+</section>
+
+<section class="section two-col">
+  <div class="box"><h2>研发整改说明</h2><pre>${esc(result.developerMessage)}</pre></div>
+  <div class="box"><h2>运营同步话术</h2><pre>${esc(result.operationMessage)}</pre></div>
+</section>
+
+<div class="footer">APKFlow 渠道提审检测平台 · 静态检测报告</div>
 </div>
 </body>
 </html>`
