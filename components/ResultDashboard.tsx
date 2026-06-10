@@ -1,9 +1,11 @@
 'use client'
 
+import { useState } from 'react'
 import { CopyButton } from './CopyButton'
 import { MetricCard } from './MetricCard'
 
 type IssueStatus = 'fail' | 'risk' | 'pass' | 'parse_error' | 'info'
+type IssueFilter = 'all' | 'fail' | 'risk' | 'pass' | 'parse_error'
 
 type ReportIssue = {
   id: string
@@ -65,6 +67,34 @@ function issueBorderClass(status: IssueStatus) {
   if (status === 'parse_error') return 'border-l-slate-400'
   if (status === 'pass') return 'border-l-emerald-500'
   return 'border-l-sky-500'
+}
+
+const issueFilters: Array<{ key: IssueFilter; label: string }> = [
+  { key: 'all', label: '全部' },
+  { key: 'fail', label: '严重问题' },
+  { key: 'risk', label: '一般风险' },
+  { key: 'pass', label: '通过项' },
+  { key: 'parse_error', label: '解析失败' }
+]
+
+function filterCount(issues: ReportIssue[], filter: IssueFilter) {
+  if (filter === 'all') return issues.length
+  return issues.filter(issue => issue.status === filter).length
+}
+
+function filterIssues(groups: IssueGroup[], filter: IssueFilter) {
+  if (filter === 'all') return groups
+  return groups
+    .map(group => ({
+      ...group,
+      issues: group.issues.filter(issue => issue.status === filter)
+    }))
+    .filter(group => group.issues.length > 0)
+}
+
+function shouldOpenGroup(group: IssueGroup, filter: IssueFilter) {
+  if (filter !== 'all') return true
+  return group.issues.some(issue => issue.status === 'fail' || issue.status === 'risk' || issue.status === 'parse_error')
 }
 
 function issueStatusFromLevel(level?: string): IssueStatus {
@@ -392,10 +422,13 @@ function GroupSummary({ issues }: { issues: ReportIssue[] }) {
 }
 
 export function ResultDashboard({ result }: { result: any }) {
+  const [activeFilter, setActiveFilter] = useState<IssueFilter>('all')
+
   if (!result) return null
 
   const groups = buildIssueGroups(result)
   const allIssues = groups.flatMap(group => group.issues)
+  const filteredGroups = filterIssues(groups, activeFilter)
   const failCount = allIssues.filter(issue => issue.status === 'fail').length
   const riskCount = allIssues.filter(issue => issue.status === 'risk').length
   const passCount = allIssues.filter(issue => issue.status === 'pass').length
@@ -427,30 +460,34 @@ export function ResultDashboard({ result }: { result: any }) {
         : '建议整改后再提交渠道，并重新上传 APKFlow 复测。'
   const scoreText = result.score === null ? '不可用' : `${result.score}/100`
   const gradeText = result.grade === null ? '等级不可用' : `等级 ${result.grade}`
+  const conclusionLine = parseError
+    ? '检测结论：解析失败，建议重新上传或检查 APK 文件'
+    : conclusionStatus === 'pass'
+      ? '检测结论：通过，建议完成渠道后台复核后提交'
+      : conclusionStatus === 'risk'
+        ? '检测结论：有风险，建议整改后再提交渠道'
+        : '检测结论：不建议提审，建议整改后再提交渠道'
 
   return (
     <div className="space-y-6">
       <section className={classNames('rounded-xl border border-l-4 bg-white p-5 shadow-sm', issueBorderClass(conclusionStatus))}>
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_220px]">
-          <div>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className={statusClass(conclusionStatus)}>检测结论：{conclusionLabel}</span>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={statusClass(conclusionStatus)}>{conclusionLabel}</span>
               <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">报告编号：{display(result.reportMeta?.reportId)}</span>
             </div>
-            <h2 className="mt-4 text-2xl font-semibold tracking-tight text-slate-950">{conclusion.title}</h2>
+            <h2 className="mt-4 text-2xl font-semibold tracking-tight text-slate-950">{conclusionLine}</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{conclusion.summary}</p>
-            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-700">
-              建议动作：{actionText}
+            <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
+              <span>辅助评分：{scoreText}</span>
+              <span>{gradeText}</span>
+              <span>仅用于内部参考，不替代渠道审核结论。</span>
             </div>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div className="text-xs font-semibold text-slate-500">APKFlow Score</div>
-            <div className="mt-2 text-2xl font-semibold text-slate-950">{scoreText}</div>
-            <div className="mt-1 text-xs text-slate-500">{gradeText}</div>
-            <div className="mt-3 text-xs leading-5 text-slate-500">
-              检测模式：{display(result.reportMeta?.detectionMode)}<br />
-              生成时间：{display(result.generatedAt)}
-            </div>
+          <div className="flex flex-wrap gap-2">
+            <CopyButton text={result.fullReportText || result.markdownReport || JSON.stringify(result, null, 2)} label="复制完整报告" variant="light" size="sm" />
+            <CopyButton text={result.developerMessage || ''} label="复制研发整改说明" variant="light" size="sm" />
           </div>
         </div>
 
@@ -459,6 +496,10 @@ export function ResultDashboard({ result }: { result: any }) {
           <MetricCard label="一般风险" value={parseError ? '不可用' : riskCount} detail={parseError ? '需先恢复解析' : '需要研发或运营确认'} tone={riskCount > 0 ? 'amber' : 'green'} />
           <MetricCard label="通过项" value={parseError ? '不可用' : passCount} detail={parseError ? '无可靠通过项' : '已完成检测的通过项'} tone={parseError ? 'amber' : 'green'} />
           <MetricCard label="解析失败" value={parseErrorCount} detail={parseError ? '请重新上传或检查 APK' : '未解析项数量'} tone={parseErrorCount > 0 ? 'amber' : 'blue'} />
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-700">
+          建议动作：{actionText}
         </div>
       </section>
 
@@ -471,8 +512,30 @@ export function ResultDashboard({ result }: { result: any }) {
           <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">共 {allIssues.length} 个分段</span>
         </div>
 
-        {groups.map(group => (
-          <details key={group.id} open={group.defaultOpen} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap gap-2">
+          {issueFilters.map(filter => (
+            <button
+              key={filter.key}
+              type="button"
+              onClick={() => setActiveFilter(filter.key)}
+              className={classNames(
+                'rounded-full border px-3 py-1.5 text-xs font-semibold transition',
+                activeFilter === filter.key
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+              )}
+            >
+              {filter.label} {filterCount(allIssues, filter.key)}
+            </button>
+          ))}
+        </div>
+
+        {filteredGroups.length === 0 && (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">当前筛选下暂无问题项。</div>
+        )}
+
+        {filteredGroups.map(group => (
+          <details key={`${group.id}-${activeFilter}`} open={shouldOpenGroup(group, activeFilter)} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <summary className="cursor-pointer list-none border-b border-slate-200 bg-slate-50 px-5 py-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -493,15 +556,13 @@ export function ResultDashboard({ result }: { result: any }) {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-950">报告导出</h3>
-            <p className="mt-1 text-sm text-slate-500">完整报告和角色话术统一放在这里，避免操作入口散落。</p>
+            <p className="mt-1 text-sm text-slate-500">下载类操作和运营话术统一放在这里。</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <CopyButton text={result.fullReportText || result.markdownReport || JSON.stringify(result, null, 2)} label="复制完整报告" variant="light" />
-            <CopyButton text={result.developerMessage || ''} label="复制研发整改说明" variant="light" />
-            <CopyButton text={result.operationMessage || ''} label="复制运营话术" variant="light" />
             <button type="button" onClick={() => downloadText('apkflow-channel-report.html', result.htmlReport || result.fullReportText || '', 'text/html;charset=utf-8')} className="btn-secondary">下载报告</button>
             <button type="button" onClick={() => downloadText('apkflow-report.md', result.markdownReport || result.fullReportText || '', 'text/markdown;charset=utf-8')} className="btn-secondary">下载 Markdown</button>
             <button type="button" onClick={() => downloadText('apkflow-report.json', JSON.stringify(result, null, 2))} className="btn-secondary">下载 JSON</button>
+            <CopyButton text={result.operationMessage || ''} label="复制运营话术" variant="light" />
           </div>
         </div>
       </section>
