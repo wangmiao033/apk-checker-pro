@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { channelRules } from '@/lib/channelRules'
 import { ResultDashboard } from './ResultDashboard'
+import { CopyButton } from './CopyButton'
 
 type EngineMode = 'full' | 'degraded' | 'unavailable'
 type ViewKey = 'dashboard' | 'history' | 'rules' | 'reports' | 'settings'
@@ -66,6 +67,20 @@ function engineText(mode: EngineMode) {
   if (mode === 'full') return '完整检测模式'
   if (mode === 'degraded') return '降级检测模式'
   return '检测引擎异常'
+}
+
+function statusText(status?: string) {
+  if (status === 'passed') return '通过'
+  if (status === 'failed') return '不通过'
+  if (status === 'parse_error') return '解析失败'
+  return '待检测'
+}
+
+function statusClass(status?: string) {
+  if (status === 'passed') return 'status-pass'
+  if (status === 'failed') return 'status-fail'
+  if (status === 'parse_error') return 'inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600'
+  return 'status-info'
 }
 
 function formatBytes(bytes: number) {
@@ -156,6 +171,7 @@ export function UploadWorkspace() {
   const [healthError, setHealthError] = useState('')
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadTime, setUploadTime] = useState('')
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -228,6 +244,8 @@ export function UploadWorkspace() {
       return
     }
     setFile(nextFile)
+    setResult(null)
+    setUploadTime(new Date().toLocaleString('zh-CN', { hour12: false }))
   }
 
   const onDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
@@ -279,27 +297,33 @@ export function UploadWorkspace() {
   }
 
   function renderUploadPanel() {
-    if (result && file) {
+    if (file) {
       return (
-        <div className="mt-6 rounded-[2rem] border border-slate-200 bg-slate-50 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="text-xs font-semibold uppercase text-slate-500">当前 APK</div>
-              <div className="mt-1 max-w-[520px] truncate text-lg font-black">{file.name}</div>
-              <div className="mt-1 text-sm text-slate-500">{(file.size / 1024 / 1024).toFixed(2)} MB</div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="text-xs font-semibold uppercase text-slate-500">当前 APK</div>
+                <span className={loading ? 'status-warn' : statusClass(result?.status)}>{loading ? '检测中' : statusText(result?.status)}</span>
+              </div>
+              <div className="mt-2 max-w-[620px] truncate text-base font-semibold text-slate-950">{file.name}</div>
+              <div className="mt-2 grid gap-2 text-sm text-slate-500 sm:grid-cols-2 lg:grid-cols-3">
+                <span>文件大小：{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                <span>上传时间：{uploadTime || '刚刚'}</span>
+                <span>检测状态：{loading ? '检测中' : statusText(result?.status)}</span>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-2">
               <button type="button" className="btn-secondary" onClick={() => inputRef.current?.click()}>重新上传</button>
-              <button type="button" className="btn-primary" onClick={analyze} disabled={loading}>{loading ? '检测中...' : '重新检测'}</button>
-              <button type="button" className="btn-secondary" onClick={() => downloadText('apkflow-report.json', JSON.stringify(result, null, 2))}>下载报告</button>
-              <button type="button" className="btn-secondary" onClick={() => downloadText('apkflow-report.md', result.markdownReport || result.fullReportText || '', 'text/markdown;charset=utf-8')}>下载 Markdown</button>
+              <button type="button" className="btn-primary" onClick={analyze} disabled={loading}>{loading ? '检测中...' : result ? '重新检测' : '开始检测'}</button>
+              <button type="button" className="btn-secondary" onClick={() => { setFile(null); setResult(null); setError(''); setUploadTime('') }}>重置</button>
             </div>
           </div>
           {loading && (
             <div className="mt-5">
               <div className="flex justify-between text-xs font-semibold text-slate-500"><span>上传与检测中</span><span>{uploadProgress}%</span></div>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
-                <div className="h-full rounded-full bg-slate-950 transition-all" style={{ width: `${uploadProgress}%` }} />
+                <div className="h-full rounded-full bg-slate-900 transition-all" style={{ width: `${uploadProgress}%` }} />
               </div>
             </div>
           )}
@@ -315,13 +339,13 @@ export function UploadWorkspace() {
         onDrop={onDrop}
         onClick={() => inputRef.current?.click()}
         className={classNames(
-          'mt-6 cursor-pointer rounded-[2rem] border-2 border-dashed p-10 text-center transition',
+          'cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition',
           dragging ? 'border-blue-400 bg-blue-50' : 'border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-white'
         )}
       >
         <input ref={inputRef} type="file" accept=".apk" className="hidden" onChange={event => chooseFile(event.target.files?.[0] || null)} />
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-slate-950 text-3xl text-white">APK</div>
-        <div className="mt-5 text-lg font-black">{file ? file.name : '点击或拖拽 APK 到这里'}</div>
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-slate-900 text-sm font-semibold text-white">APK</div>
+        <div className="mt-5 text-base font-semibold text-slate-950">点击或拖拽 APK 到这里</div>
         <div className="mt-2 text-sm text-slate-500">
           {process.env.NEXT_PUBLIC_ANALYZE_API_URL ? '独立检测后端最大支持 500MB' : '当前演示环境最大支持 4MB'}
         </div>
@@ -329,7 +353,7 @@ export function UploadWorkspace() {
           <div className="mx-auto mt-6 max-w-md">
             <div className="flex justify-between text-xs font-semibold text-slate-500"><span>上传与检测中</span><span>{uploadProgress}%</span></div>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
-              <div className="h-full rounded-full bg-slate-950 transition-all" style={{ width: `${uploadProgress}%` }} />
+              <div className="h-full rounded-full bg-slate-900 transition-all" style={{ width: `${uploadProgress}%` }} />
             </div>
           </div>
         )}
@@ -339,23 +363,23 @@ export function UploadWorkspace() {
 
   function renderDiagnostics() {
     return (
-      <div className="mb-6 rounded-[2rem] border border-slate-200 bg-white/85 p-5 shadow-sm backdrop-blur">
+      <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-black">检测后端诊断</h2>
+            <h2 className="text-lg font-semibold">检测后端诊断</h2>
             <p className="mt-1 text-sm leading-6 text-slate-500">用于排查 Failed to fetch、连接重置、代理拦截和工具缺失。</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-2">
             <button type="button" className="btn-secondary" onClick={refreshHealth}>重新检测后端</button>
             <a className="btn-secondary" href={healthApiUrl()} target="_blank" rel="noreferrer">打开 health</a>
           </div>
         </div>
         <div className="mt-5 grid gap-3 text-sm md:grid-cols-2">
-          <div className="rounded-2xl bg-slate-50 p-4">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="text-xs font-semibold uppercase text-slate-400">Analyze API</div>
             <div className="mt-2 break-all font-semibold text-slate-800">{analyzeApiUrl()}</div>
           </div>
-          <div className="rounded-2xl bg-slate-50 p-4">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="text-xs font-semibold uppercase text-slate-400">Health API</div>
             <div className="mt-2 break-all font-semibold text-slate-800">{healthApiUrl()}</div>
           </div>
@@ -366,31 +390,95 @@ export function UploadWorkspace() {
           <ToolBadge label="apksigner" ok={engineHealth?.tools?.apksigner} />
           <ToolBadge label="strings" ok={engineHealth?.tools?.strings} />
         </div>
-        <div className="mt-4 rounded-2xl bg-slate-950 p-4 text-sm leading-6 text-slate-100">
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
           <div>当前模式：{engineMessage}</div>
           <div>上传限制：{engineHealth?.maxUploadMB || maxUploadMB()}MB</div>
           <div>检查时间：{engineHealth?.checkedAt || '未完成'}</div>
           {engineHealth?.version && <div>后端版本：{engineHealth.version}</div>}
-          {healthError && <div className="mt-2 text-rose-200">健康检查错误：{healthError}</div>}
-          <div className="mt-2 text-slate-300">如果 Chrome 仍提示连接失败，请检查代理/VPN/安全软件是否拦截 apk-api.hnchpower.cn。</div>
+          {healthError && <div className="mt-2 text-rose-600">健康检查错误：{healthError}</div>}
+          <div className="mt-2 text-slate-500">如果 Chrome 仍提示连接失败，请检查代理/VPN/安全软件是否拦截 apk-api.hnchpower.cn。</div>
         </div>
       </div>
+    )
+  }
+
+  function renderAuxiliaryRail() {
+    return (
+      <aside className="space-y-4">
+        <div className="glass-card p-4">
+          <div className="text-xs font-semibold uppercase text-slate-500">Workspace Overview</div>
+          <h3 className="mt-2 text-base font-semibold text-slate-950">工作台概览</h3>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="text-xs text-slate-500">历史检测</div>
+              <div className="mt-1 text-xl font-semibold text-slate-950">{stats.total}</div>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+              <div className="text-xs text-emerald-700">通过</div>
+              <div className="mt-1 text-xl font-semibold text-emerald-700">{stats.passed}</div>
+            </div>
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+              <div className="text-xs text-rose-700">不通过</div>
+              <div className="mt-1 text-xl font-semibold text-rose-700">{stats.failed}</div>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-100 p-3">
+              <div className="text-xs text-slate-600">解析失败</div>
+              <div className="mt-1 text-xl font-semibold text-slate-700">{stats.parseErrors}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="glass-card p-4">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-base font-semibold text-slate-950">历史检测统计</h3>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500">本地</span>
+          </div>
+          <div className="mt-3 space-y-2 text-sm text-slate-600">
+            <div className="flex justify-between"><span>通过 / 不通过</span><b>{stats.passed} / {stats.failed}</b></div>
+            <div className="flex justify-between"><span>解析失败</span><b>{stats.parseErrors}</b></div>
+            <div className="flex justify-between"><span>平均评分</span><b>{stats.avg === null ? '不可用' : stats.avg}</b></div>
+          </div>
+        </div>
+
+        <div className="glass-card p-4">
+          <h3 className="text-base font-semibold text-slate-950">当前检测重点</h3>
+          <div className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
+            <div>arm64-v8a 64 位包体</div>
+            <div>targetSdkVersion 达标判定</div>
+            <div>权限、HTTP、Debug、签名风险</div>
+            <div>解析失败时不输出误导性结论</div>
+          </div>
+        </div>
+
+        {result && (
+          <div className="glass-card p-4">
+            <div className="text-xs font-semibold uppercase text-slate-500">APKFlow Score</div>
+            <div className="mt-2 text-xl font-semibold text-slate-950">{result.score === null ? '不可用' : `${result.score}/100`}</div>
+            <div className="mt-1 text-xs text-slate-500">辅助评分，不替代检测结论</div>
+          </div>
+        )}
+
+        <div className="glass-card p-4">
+          <div className="text-base font-semibold text-slate-950">PWA Ready</div>
+          <p className="mt-2 text-sm leading-6 text-slate-500">部署到 HTTPS 后，可添加到桌面使用。</p>
+        </div>
+      </aside>
     )
   }
 
   function renderContent() {
     if (activeView === 'history') {
       return (
-        <section className="glass-card p-6">
+        <section className="glass-card p-5">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-black">检测历史</h2>
+              <h2 className="text-lg font-semibold text-slate-950">检测历史</h2>
               <p className="mt-1 text-sm text-slate-500">历史记录保存在当前浏览器本地，最多保留 50 条。</p>
             </div>
             <button onClick={() => { setHistory([]); localStorage.removeItem('apkflow-history') }} className="btn-secondary">清空历史</button>
           </div>
-          <div className="mt-6 overflow-hidden rounded-3xl border border-slate-200 bg-white">
-            <table className="w-full text-left text-sm">
+          <div className="mt-5 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table className="min-w-[760px] w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-500">
                 <tr><th className="p-4">APK</th><th className="p-4">状态</th><th className="p-4">评分</th><th className="p-4">时间</th><th className="p-4">操作</th></tr>
               </thead>
@@ -402,7 +490,7 @@ export function UploadWorkspace() {
                     <td className="p-4"><span className={item.status === 'passed' ? 'status-pass' : item.status === 'parse_error' ? 'status-warn' : 'status-fail'}>{item.summary}</span></td>
                     <td className="p-4 font-bold">{item.score === null ? '不可用' : item.score}</td>
                     <td className="p-4 text-slate-500">{item.generatedAt}</td>
-                    <td className="p-4"><button onClick={() => { setResult(item.result); setActiveView('dashboard') }} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white">查看报告</button></td>
+                    <td className="p-4"><button onClick={() => { setResult(item.result); setActiveView('dashboard') }} className="btn-primary btn-sm">查看报告</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -414,20 +502,20 @@ export function UploadWorkspace() {
 
     if (activeView === 'rules') {
       return (
-        <section className="glass-card p-6">
-          <h2 className="text-2xl font-black">渠道规则中心</h2>
+        <section className="glass-card p-5">
+          <h2 className="text-lg font-semibold text-slate-950">渠道规则中心</h2>
           <p className="mt-1 text-sm text-slate-500">当前规则版本以静态配置维护，后续可升级为数据库或后台配置。</p>
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {channelRules.map(rule => (
-              <div key={rule.id} className="rounded-3xl border border-slate-200 bg-white p-5">
+              <div key={rule.id} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-xs font-black text-white">{rule.logo}</div>
-                  <div><div className="font-black">{rule.name}</div><div className="text-xs text-slate-500">{rule.id}</div></div>
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-xs font-semibold text-white">{rule.logo}</div>
+                  <div><div className="font-semibold text-slate-950">{rule.name}</div><div className="text-xs text-slate-500">{rule.id}</div></div>
                 </div>
                 <div className="mt-4 space-y-2 text-sm">
-                  <div className="flex justify-between rounded-2xl bg-slate-50 px-3 py-2"><span>arm64-v8a</span><b>{rule.requireArm64 ? '必须' : '可选'}</b></div>
-                  <div className="flex justify-between rounded-2xl bg-slate-50 px-3 py-2"><span>targetSdk</span><b>≥ {rule.targetSdkMin}</b></div>
-                  <div className="flex justify-between rounded-2xl bg-slate-50 px-3 py-2"><span>纯 32 位</span><b>{rule.allowPure32Bit ? '允许' : '不允许'}</b></div>
+                  <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>arm64-v8a</span><b>{rule.requireArm64 ? '必须' : '可选'}</b></div>
+                  <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>targetSdk</span><b>≥ {rule.targetSdkMin}</b></div>
+                  <div className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>纯 32 位</span><b>{rule.allowPure32Bit ? '允许' : '不允许'}</b></div>
                 </div>
                 <p className="mt-4 text-sm leading-6 text-slate-500">{rule.description}</p>
               </div>
@@ -439,29 +527,22 @@ export function UploadWorkspace() {
 
     if (activeView === 'reports') {
       return (
-        <section className="glass-card p-6">
-          <h2 className="text-2xl font-black">报告中心</h2>
-          <p className="mt-1 text-sm text-slate-500">检测完成后可下载 JSON 或 HTML 检测报告。</p>
+        <section className="glass-card p-5">
+          <h2 className="text-lg font-semibold text-slate-950">报告中心</h2>
+          <p className="mt-1 text-sm text-slate-500">检测完成后可复制完整报告、研发整改说明、运营话术，也可下载报告文件。</p>
           {!result ? (
-            <div className="mt-8 rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500">暂无可下载报告，请先上传 APK 完成检测。</div>
+            <div className="mt-8 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500">暂无可下载报告，请先上传 APK 完成检测。</div>
           ) : (
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <button onClick={() => downloadText('apkflow-report.json', JSON.stringify(result, null, 2))} className="rounded-3xl border border-slate-200 bg-white p-8 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-glass">
-                <div className="text-lg font-black">JSON 检测报告</div>
-                <div className="mt-2 text-sm text-slate-500">适合研发系统、CI/CD 或二次解析。</div>
-              </button>
-              <button onClick={() => downloadText('apkflow-report.md', result.markdownReport || result.fullReportText || '', 'text/markdown;charset=utf-8')} className="rounded-3xl border border-slate-200 bg-white p-8 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-glass">
-                <div className="text-lg font-black">Markdown 检测报告</div>
-                <div className="mt-2 text-sm text-slate-500">适合发到飞书、企微、Tapd 或 Jira 工单。</div>
-              </button>
-              <button onClick={() => downloadText('apkflow-channel-report.html', result.htmlReport, 'text/html;charset=utf-8')} className="rounded-3xl border border-slate-200 bg-white p-8 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-glass">
-                <div className="text-lg font-black">HTML 检测报告</div>
-                <div className="mt-2 text-sm text-slate-500">适合发送给研发、运营、管理层查看。</div>
-              </button>
-              <button onClick={() => navigator.clipboard.writeText(result.fullReportText || result.markdownReport || JSON.stringify(result, null, 2))} className="rounded-3xl border border-slate-200 bg-white p-8 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-glass">
-                <div className="text-lg font-black">复制完整报告</div>
-                <div className="mt-2 text-sm text-slate-500">一键复制完整文本报告。</div>
-              </button>
+            <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap gap-2">
+                <CopyButton text={result.fullReportText || result.markdownReport || JSON.stringify(result, null, 2)} label="复制完整报告" variant="light" />
+                <CopyButton text={result.developerMessage || ''} label="复制研发整改说明" variant="light" />
+                <CopyButton text={result.operationMessage || ''} label="复制运营话术" variant="light" />
+                <button onClick={() => downloadText('apkflow-channel-report.html', result.htmlReport || result.fullReportText || '', 'text/html;charset=utf-8')} className="btn-secondary">下载报告</button>
+                <button onClick={() => downloadText('apkflow-report.md', result.markdownReport || result.fullReportText || '', 'text/markdown;charset=utf-8')} className="btn-secondary">下载 Markdown</button>
+                <button onClick={() => downloadText('apkflow-report.json', JSON.stringify(result, null, 2))} className="btn-secondary">下载 JSON</button>
+              </div>
+              <p className="mt-3 text-sm text-slate-500">报告导出入口也会在检测工作台报告底部保留。</p>
             </div>
           )}
         </section>
@@ -470,19 +551,19 @@ export function UploadWorkspace() {
 
     if (activeView === 'settings') {
       return (
-        <section className="glass-card p-6">
-          <h2 className="text-2xl font-black">系统设置</h2>
+        <section className="glass-card p-5">
+          <h2 className="text-lg font-semibold text-slate-950">系统设置</h2>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
-            <div className="rounded-3xl border border-slate-200 bg-white p-5">
-              <h3 className="font-black">部署模式</h3>
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <h3 className="font-semibold text-slate-950">部署模式</h3>
               <p className="mt-2 text-sm leading-6 text-slate-500">Vercel 只部署前端和 PWA。大 APK 检测必须走支持系统命令和大文件上传的独立后端。</p>
             </div>
-            <div className="rounded-3xl border border-slate-200 bg-white p-5">
-              <h3 className="font-black">上传限制</h3>
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <h3 className="font-semibold text-slate-950">上传限制</h3>
               <p className="mt-2 text-sm leading-6 text-slate-500">{process.env.NEXT_PUBLIC_ANALYZE_API_URL ? '独立检测后端默认限制 500MB。' : '当前 Vercel 演示环境最大支持 4MB。'}</p>
             </div>
-            <div className="rounded-3xl border border-slate-200 bg-white p-5">
-              <h3 className="font-black">检测引擎</h3>
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <h3 className="font-semibold text-slate-950">检测引擎</h3>
               <p className="mt-2 text-sm leading-6 text-slate-500">当前状态：{engineMessage}。完整模式需要 unzip、aapt、apksigner、strings 均可用。</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <ToolBadge label="unzip" ok={engineHealth?.tools?.unzip} />
@@ -491,12 +572,12 @@ export function UploadWorkspace() {
                 <ToolBadge label="strings" ok={engineHealth?.tools?.strings} />
               </div>
             </div>
-            <div className="rounded-3xl border border-slate-200 bg-white p-5">
-              <h3 className="font-black">安全边界</h3>
+            <div className="rounded-lg border border-slate-200 bg-white p-5">
+              <h3 className="font-semibold text-slate-950">安全边界</h3>
               <p className="mt-2 text-sm leading-6 text-slate-500">只做静态分析，不安装 APK，不启动游戏，不执行 APK 内代码。</p>
             </div>
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 md:col-span-2">
-              <h3 className="font-black">接口诊断</h3>
+            <div className="rounded-lg border border-slate-200 bg-white p-5 md:col-span-2">
+              <h3 className="font-semibold text-slate-950">接口诊断</h3>
               <p className="mt-2 break-all text-sm leading-6 text-slate-500">Analyze API：{analyzeApiUrl()}</p>
               <p className="mt-1 break-all text-sm leading-6 text-slate-500">Health API：{healthApiUrl()}</p>
               {healthError && <p className="mt-2 text-sm font-semibold text-rose-600">健康检查错误：{healthError}</p>}
@@ -507,46 +588,33 @@ export function UploadWorkspace() {
     }
 
     return (
-      <>
-        <section className="grid gap-5 xl:grid-cols-[1.05fr_.95fr]">
-          <div className="glass-card overflow-hidden p-6">
-            <div className="status-info">APK 静态机审分析</div>
-            <h2 className="mt-4 text-3xl font-black tracking-tight">上传 APK，自动生成多渠道提交前检测报告</h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">优先保证检测可信度：当当前环境无法完整解析 APK 时，系统会返回解析失败，而不是输出误导性的渠道不通过结论。</p>
-            {renderUploadPanel()}
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              {!result && <button onClick={analyze} disabled={loading} className="btn-primary">{loading ? '检测中，请稍候...' : '开始检测'}</button>}
-              <button onClick={() => { setFile(null); setResult(null); setError('') }} className="btn-secondary">重置</button>
-              {error && <div className="whitespace-pre-wrap rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium leading-6 text-rose-700">{error}</div>}
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0 space-y-6">
+          <div className="glass-card p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="status-info">APK 上传</div>
+                <h2 className="mt-3 break-words text-xl font-semibold tracking-tight text-slate-950">检测工作台</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">上传 APK 后自动生成多渠道提交前检测报告；解析失败时只显示失败原因和重新上传建议。</p>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">当前模式：{engineText(engineMode)}</span>
             </div>
+            <div className="mt-5">{renderUploadPanel()}</div>
+            {error && <div className="mt-4 whitespace-pre-wrap rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium leading-6 text-rose-700">{error}</div>}
           </div>
 
-          <div className="dark-card relative overflow-hidden p-6">
-            <div className="absolute inset-0 bg-radial-blue opacity-70" />
-            <div className="relative">
-              <div className="text-sm text-slate-300">Workspace Overview</div>
-              <h3 className="mt-3 text-2xl font-black">渠道包质量工作台</h3>
-              <div className="mt-6 grid grid-cols-2 gap-3">
-                <div className="rounded-3xl bg-white/10 p-4 backdrop-blur"><div className="text-sm text-slate-300">历史检测</div><div className="mt-2 text-3xl font-black">{stats.total}</div></div>
-                <div className="rounded-3xl bg-white/10 p-4 backdrop-blur"><div className="text-sm text-slate-300">通过</div><div className="mt-2 text-3xl font-black text-emerald-300">{stats.passed}</div></div>
-                <div className="rounded-3xl bg-white/10 p-4 backdrop-blur"><div className="text-sm text-slate-300">不通过</div><div className="mt-2 text-3xl font-black text-rose-300">{stats.failed}</div></div>
-                <div className="rounded-3xl bg-white/10 p-4 backdrop-blur"><div className="text-sm text-slate-300">解析失败</div><div className="mt-2 text-3xl font-black text-amber-200">{stats.parseErrors}</div></div>
-              </div>
-              <div className="mt-6 rounded-3xl border border-white/10 bg-white/10 p-4">
-                <div className="text-sm font-semibold">当前检测重点</div>
-                <div className="mt-3 space-y-2 text-sm text-slate-300">
-                  <div>arm64-v8a 64 位包体</div>
-                  <div>targetSdkVersion 达标判定</div>
-                  <div>签名、HTTP、权限、Debug 风险</div>
-                  <div>解析失败时不输出误导性结论</div>
-                </div>
-              </div>
+          {result ? (
+            <ResultDashboard result={result} />
+          ) : (
+            <div className="glass-card p-5">
+              <h3 className="text-lg font-semibold text-slate-950">检测完成后将优先展示结论总览</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">结果页会按严重问题、一般风险、通过项和解析失败项分组，并支持单个问题复制给研发。</p>
             </div>
-          </div>
-        </section>
+          )}
+        </div>
 
-        {result ? <div className="mt-6"><ResultDashboard result={result} /></div> : null}
-      </>
+        <div className="min-w-0">{renderAuxiliaryRail()}</div>
+      </section>
     )
   }
 
@@ -560,11 +628,11 @@ export function UploadWorkspace() {
 
   return (
     <main className="min-h-screen p-4 lg:p-6">
-      <div className="mx-auto grid max-w-[1580px] gap-6 lg:grid-cols-[280px_1fr]">
-        <aside className="sticky top-6 hidden h-[calc(100vh-48px)] rounded-[2rem] bg-slate-950 p-5 text-white shadow-glow lg:block">
+      <div className="mx-auto grid max-w-[1360px] gap-6 lg:grid-cols-[240px_1fr]">
+        <aside className="sticky top-6 hidden h-[calc(100vh-48px)] rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:block">
           <div className="flex items-center gap-3 px-2">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-violet-500 to-emerald-400 text-lg font-black">A</div>
-            <div><div className="text-lg font-black">APKFlow</div><div className="text-xs text-slate-400">Channel QA Platform</div></div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900 text-sm font-semibold text-white">A</div>
+            <div><div className="text-base font-semibold text-slate-950">APKFlow</div><div className="text-xs text-slate-500">Channel QA Platform</div></div>
           </div>
           <nav className="mt-8 space-y-2">
             {nav.map(([key, label]) => (
@@ -573,27 +641,33 @@ export function UploadWorkspace() {
               </button>
             ))}
           </nav>
-          <div className="absolute bottom-5 left-5 right-5 rounded-3xl border border-white/10 bg-white/5 p-4">
-            <div className="text-sm font-semibold">PWA Ready</div>
-            <p className="mt-2 text-xs leading-5 text-slate-400">部署到 HTTPS 后，可添加到桌面使用。</p>
+          <div className="absolute bottom-4 left-4 right-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="text-sm font-semibold text-slate-950">PWA Ready</div>
+            <p className="mt-2 text-xs leading-5 text-slate-500">部署到 HTTPS 后，可添加到桌面使用。</p>
           </div>
         </aside>
 
-        <section>
-          <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="text-sm font-semibold text-blue-700">APK CHANNEL PRECHECK</div>
-              <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">APKFlow 渠道提审检测平台</h1>
+        <section className="min-w-0">
+          <header className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">APK CHANNEL PRECHECK</div>
+              <h1 className="mt-1 break-words text-2xl font-semibold tracking-tight text-slate-950 md:text-[28px]">APKFlow 渠道提审检测平台</h1>
+              <p className="mt-2 text-sm text-slate-500">上传 APK 后自动生成多渠道提交前检测报告</p>
             </div>
-            <button type="button" onClick={() => setDiagnosticsOpen(open => !open)} className="flex items-center gap-3 rounded-3xl border border-white/80 bg-white/80 px-4 py-3 text-left shadow-sm backdrop-blur transition hover:bg-white">
+            <button type="button" onClick={() => setDiagnosticsOpen(open => !open)} className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:bg-white sm:w-auto">
               <div className={classNames('h-2.5 w-2.5 rounded-full', engineMode === 'full' ? 'bg-emerald-500' : engineMode === 'degraded' ? 'bg-amber-500' : 'bg-rose-500')} />
-              <div className="text-sm font-semibold">{engineMessage}</div>
+              <div>
+                <div className="text-xs text-slate-500">当前模式</div>
+                <div className="text-sm font-semibold text-slate-900">{engineMessage}</div>
+              </div>
             </button>
+            </div>
           </header>
 
           <div className="mb-6 flex gap-2 overflow-auto lg:hidden">
             {nav.map(([key, label]) => (
-              <button key={key} onClick={() => setActiveView(key)} className={classNames('rounded-2xl px-4 py-2 text-sm font-semibold', activeView === key ? 'bg-slate-950 text-white' : 'bg-white text-slate-600')}>
+              <button key={key} onClick={() => setActiveView(key)} className={classNames('whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold shadow-sm', activeView === key ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600')}>
                 {label}
               </button>
             ))}

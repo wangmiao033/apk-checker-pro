@@ -1,17 +1,17 @@
 export function MetricCard({ label, value, detail, tone = 'slate' }: { label: string, value: string | number, detail: string, tone?: 'slate' | 'green' | 'red' | 'blue' | 'amber' }) {
   const toneMap = {
-    slate: 'from-slate-900 to-slate-700 text-white',
-    green: 'from-emerald-500 to-teal-600 text-white',
-    red: 'from-rose-500 to-red-600 text-white',
-    blue: 'from-blue-500 to-indigo-600 text-white',
-    amber: 'from-amber-400 to-orange-500 text-white'
+    slate: 'border-slate-200 bg-white text-slate-900 before:bg-slate-400',
+    green: 'border-emerald-200 bg-emerald-50/50 text-emerald-950 before:bg-emerald-500',
+    red: 'border-rose-200 bg-rose-50/50 text-rose-950 before:bg-rose-500',
+    blue: 'border-sky-200 bg-sky-50/50 text-sky-950 before:bg-sky-500',
+    amber: 'border-amber-200 bg-amber-50/60 text-amber-950 before:bg-amber-500'
   }
 
   return (
-    <div className={`rounded-3xl bg-gradient-to-br ${toneMap[tone]} p-5 shadow-glow`}>
-      <div className="text-sm opacity-80">{label}</div>
-      <div className="mt-3 text-3xl font-black">{value}</div>
-      <div className="mt-2 text-xs leading-5 opacity-80">{detail}</div>
+    <div className={`relative overflow-hidden rounded-xl border p-4 shadow-sm before:absolute before:left-0 before:top-0 before:h-full before:w-1 ${toneMap[tone]}`}>
+      <div className="text-xs font-semibold text-slate-500">{label}</div>
+      <div className="mt-2 text-2xl font-bold tracking-tight">{value}</div>
+      <div className="mt-1 text-xs leading-5 text-slate-500">{detail}</div>
     </div>
   )
 }

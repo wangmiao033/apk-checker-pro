@@ -2,7 +2,17 @@
 
 import { useState } from 'react'
 
-export function CopyButton({ text, label = '复制', variant = 'dark' }: { text: string, label?: string, variant?: 'dark' | 'light' }) {
+export function CopyButton({
+  text,
+  label = '复制',
+  variant = 'dark',
+  size = 'md'
+}: {
+  text: string
+  label?: string
+  variant?: 'dark' | 'light'
+  size?: 'sm' | 'md'
+}) {
   const [copied, setCopied] = useState(false)
 
   async function copy() {
@@ -14,7 +24,7 @@ export function CopyButton({ text, label = '复制', variant = 'dark' }: { text:
   return (
     <button
       onClick={copy}
-      className={variant === 'dark' ? 'btn-primary' : 'btn-secondary'}
+      className={`${variant === 'dark' ? 'btn-primary' : 'btn-secondary'} ${size === 'sm' ? 'btn-sm' : ''}`}
       type="button"
     >
       {copied ? '已复制' : label}

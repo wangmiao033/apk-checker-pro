@@ -17,10 +17,7 @@ html {
 body {
   min-height: 100vh;
   color: #0f172a;
-  background:
-    radial-gradient(circle at 16% 8%, rgba(59,130,246,0.13), transparent 28%),
-    radial-gradient(circle at 94% 12%, rgba(168,85,247,0.11), transparent 25%),
-    linear-gradient(180deg, #f8fbff 0%, #eef3fb 100%);
+  background: #f6f7f9;
 }
 
 ::selection {
@@ -29,13 +26,13 @@ body {
 
 @layer components {
   .glass-card {
-    @apply rounded-3xl border border-white/70 bg-white/[.82] shadow-glass backdrop-blur-xl;
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
   }
   .dark-card {
-    @apply rounded-3xl border border-white/10 bg-slate-950 text-white shadow-glass;
+    @apply rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm;
   }
   .soft-card {
-    @apply rounded-2xl border border-slate-200/80 bg-white shadow-sm;
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
   }
   .status-pass {
     @apply inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700;
@@ -47,18 +44,21 @@ body {
     @apply inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700;
   }
   .status-info {
-    @apply inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700;
+    @apply inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700;
   }
   .btn-primary {
-    @apply rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-950/15 transition hover:-translate-y-0.5 hover:bg-slate-800 disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:pointer-events-none disabled:opacity-50;
   }
   .btn-secondary {
-    @apply rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-sm {
+    @apply rounded-md px-3 py-1.5 text-xs;
   }
   .nav-item {
-    @apply flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white;
+    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-950;
   }
   .nav-item-active {
-    @apply bg-white text-slate-950 shadow-lg shadow-black/10 hover:bg-white hover:text-slate-950;
+    @apply bg-slate-900 text-white shadow-sm hover:bg-slate-900 hover:text-white;
   }
 }
