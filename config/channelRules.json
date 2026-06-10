@@ -4,15 +4,17 @@
     "channelName": "通用渠道",
     "name": "通用渠道",
     "logo": "A",
-    "minTargetSdkVersion": 33,
-    "targetSdkMin": 33,
+    "minTargetSdkVersion": 30,
+    "targetSdkMin": 30,
     "requireArm64": true,
     "allowPure32Bit": false,
     "allowDebuggable": false,
     "allowCleartextTraffic": false,
     "strictHttp": true,
     "maxApkSizeMB": 2048,
-    "requiredSignatureSchemes": ["v2"],
+    "requiredSignatureSchemes": [
+      "v2"
+    ],
     "sensitivePermissionPolicy": {
       "QUERY_ALL_PACKAGES": "high",
       "READ_PHONE_STATE": "medium",
@@ -34,7 +36,10 @@
     "allowCleartextTraffic": false,
     "strictHttp": true,
     "maxApkSizeMB": 2048,
-    "requiredSignatureSchemes": ["v2", "v3"],
+    "requiredSignatureSchemes": [
+      "v2",
+      "v3"
+    ],
     "sensitivePermissionPolicy": {
       "QUERY_ALL_PACKAGES": "high",
       "REQUEST_INSTALL_PACKAGES": "high",
@@ -47,15 +52,17 @@
     "channelName": "国内渠道",
     "name": "国内渠道",
     "logo": "CN",
-    "minTargetSdkVersion": 33,
-    "targetSdkMin": 33,
+    "minTargetSdkVersion": 30,
+    "targetSdkMin": 30,
     "requireArm64": true,
     "allowPure32Bit": false,
     "allowDebuggable": false,
     "allowCleartextTraffic": false,
     "strictHttp": true,
     "maxApkSizeMB": 2048,
-    "requiredSignatureSchemes": ["v2"],
+    "requiredSignatureSchemes": [
+      "v2"
+    ],
     "sensitivePermissionPolicy": {
       "QUERY_ALL_PACKAGES": "high",
       "READ_PHONE_STATE": "medium",
@@ -70,15 +77,17 @@
     "channelName": "小米",
     "name": "小米",
     "logo": "MI",
-    "minTargetSdkVersion": 33,
-    "targetSdkMin": 33,
+    "minTargetSdkVersion": 30,
+    "targetSdkMin": 30,
     "requireArm64": true,
     "allowPure32Bit": false,
     "allowDebuggable": false,
     "allowCleartextTraffic": false,
     "strictHttp": true,
     "maxApkSizeMB": 2048,
-    "requiredSignatureSchemes": ["v2"],
+    "requiredSignatureSchemes": [
+      "v2"
+    ],
     "sensitivePermissionPolicy": {
       "QUERY_ALL_PACKAGES": "high",
       "READ_PHONE_STATE": "medium",
@@ -91,15 +100,17 @@
     "channelName": "华为",
     "name": "华为",
     "logo": "HW",
-    "minTargetSdkVersion": 33,
-    "targetSdkMin": 33,
+    "minTargetSdkVersion": 30,
+    "targetSdkMin": 30,
     "requireArm64": true,
     "allowPure32Bit": false,
     "allowDebuggable": false,
     "allowCleartextTraffic": false,
     "strictHttp": true,
     "maxApkSizeMB": 2048,
-    "requiredSignatureSchemes": ["v2"],
+    "requiredSignatureSchemes": [
+      "v2"
+    ],
     "sensitivePermissionPolicy": {
       "QUERY_ALL_PACKAGES": "high",
       "READ_PHONE_STATE": "medium",
@@ -112,15 +123,17 @@
     "channelName": "OPPO",
     "name": "OPPO",
     "logo": "OP",
-    "minTargetSdkVersion": 33,
-    "targetSdkMin": 33,
+    "minTargetSdkVersion": 30,
+    "targetSdkMin": 30,
     "requireArm64": true,
     "allowPure32Bit": false,
     "allowDebuggable": false,
     "allowCleartextTraffic": false,
     "strictHttp": true,
     "maxApkSizeMB": 2048,
-    "requiredSignatureSchemes": ["v2"],
+    "requiredSignatureSchemes": [
+      "v2"
+    ],
     "sensitivePermissionPolicy": {
       "QUERY_ALL_PACKAGES": "high",
       "READ_PHONE_STATE": "medium"
@@ -132,15 +145,17 @@
     "channelName": "vivo",
     "name": "vivo",
     "logo": "VV",
-    "minTargetSdkVersion": 33,
-    "targetSdkMin": 33,
+    "minTargetSdkVersion": 30,
+    "targetSdkMin": 30,
     "requireArm64": true,
     "allowPure32Bit": false,
     "allowDebuggable": false,
     "allowCleartextTraffic": false,
     "strictHttp": true,
     "maxApkSizeMB": 2048,
-    "requiredSignatureSchemes": ["v2"],
+    "requiredSignatureSchemes": [
+      "v2"
+    ],
     "sensitivePermissionPolicy": {
       "QUERY_ALL_PACKAGES": "high",
       "READ_PHONE_STATE": "medium"
@@ -152,15 +167,17 @@
     "channelName": "荣耀",
     "name": "荣耀",
     "logo": "HN",
-    "minTargetSdkVersion": 33,
-    "targetSdkMin": 33,
+    "minTargetSdkVersion": 30,
+    "targetSdkMin": 30,
     "requireArm64": true,
     "allowPure32Bit": false,
     "allowDebuggable": false,
     "allowCleartextTraffic": false,
     "strictHttp": true,
     "maxApkSizeMB": 2048,
-    "requiredSignatureSchemes": ["v2"],
+    "requiredSignatureSchemes": [
+      "v2"
+    ],
     "sensitivePermissionPolicy": {
       "QUERY_ALL_PACKAGES": "high",
       "READ_PHONE_STATE": "medium"
@@ -172,15 +189,17 @@
     "channelName": "TapTap",
     "name": "TapTap",
     "logo": "TT",
-    "minTargetSdkVersion": 33,
-    "targetSdkMin": 33,
+    "minTargetSdkVersion": 30,
+    "targetSdkMin": 30,
     "requireArm64": true,
     "allowPure32Bit": false,
     "allowDebuggable": false,
     "allowCleartextTraffic": true,
     "strictHttp": false,
     "maxApkSizeMB": 2048,
-    "requiredSignatureSchemes": ["v2"],
+    "requiredSignatureSchemes": [
+      "v2"
+    ],
     "sensitivePermissionPolicy": {
       "QUERY_ALL_PACKAGES": "high",
       "READ_PHONE_STATE": "medium"
@@ -192,15 +211,17 @@
     "channelName": "应用宝",
     "name": "应用宝",
     "logo": "YYB",
-    "minTargetSdkVersion": 33,
-    "targetSdkMin": 33,
+    "minTargetSdkVersion": 30,
+    "targetSdkMin": 30,
     "requireArm64": true,
     "allowPure32Bit": false,
     "allowDebuggable": false,
     "allowCleartextTraffic": false,
     "strictHttp": true,
     "maxApkSizeMB": 2048,
-    "requiredSignatureSchemes": ["v2"],
+    "requiredSignatureSchemes": [
+      "v2"
+    ],
     "sensitivePermissionPolicy": {
       "QUERY_ALL_PACKAGES": "high",
       "READ_PHONE_STATE": "medium",
@@ -213,15 +234,17 @@
     "channelName": "B站",
     "name": "B站",
     "logo": "B",
-    "minTargetSdkVersion": 33,
-    "targetSdkMin": 33,
+    "minTargetSdkVersion": 30,
+    "targetSdkMin": 30,
     "requireArm64": true,
     "allowPure32Bit": false,
     "allowDebuggable": false,
     "allowCleartextTraffic": true,
     "strictHttp": false,
     "maxApkSizeMB": 2048,
-    "requiredSignatureSchemes": ["v2"],
+    "requiredSignatureSchemes": [
+      "v2"
+    ],
     "sensitivePermissionPolicy": {
       "QUERY_ALL_PACKAGES": "high",
       "READ_PHONE_STATE": "medium"

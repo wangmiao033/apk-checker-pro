@@ -116,6 +116,11 @@ function reportDownloadName(result: any, ext: 'html' | 'md' | 'json') {
   return `APKFlow_${pkg}_${version}_${date}.${ext}`
 }
 
+function defaultSelectedRuleIds(ruleList: ChannelRule[]) {
+  const defaults = ruleList.filter(rule => rule.id !== 'google_play').map(rule => rule.id)
+  return defaults.length ? defaults : ruleList.map(rule => rule.id)
+}
+
 function statusClass(status?: string) {
   if (status === 'passed') return 'status-pass'
   if (status === 'failed') return 'status-fail'
@@ -205,7 +210,7 @@ export function UploadWorkspace() {
   const [historyQuery, setHistoryQuery] = useState('')
   const [historyStatusFilter, setHistoryStatusFilter] = useState('all')
   const [historyRuleFilter, setHistoryRuleFilter] = useState('all')
-  const [selectedChannels, setSelectedChannels] = useState(channelRules.map(rule => rule.id))
+  const [selectedChannels, setSelectedChannels] = useState(defaultSelectedRuleIds(channelRules))
   const [rulesJson, setRulesJson] = useState('')
   const [ruleEditMessage, setRuleEditMessage] = useState('')
   const [loading, setLoading] = useState(false)
@@ -233,7 +238,7 @@ export function UploadWorkspace() {
         const parsed = JSON.parse(rawRules)
         if (Array.isArray(parsed) && parsed.length) {
           setRules(parsed)
-          setSelectedChannels(parsed.map((rule: ChannelRule) => rule.id))
+          setSelectedChannels(defaultSelectedRuleIds(parsed))
           setRulesJson(JSON.stringify(parsed, null, 2))
         }
       } catch {}
@@ -712,7 +717,7 @@ export function UploadWorkspace() {
           setRules(normalized)
           setSelectedChannels(prev => {
             const next = normalized.filter(rule => prev.includes(rule.id)).map(rule => rule.id)
-            return next.length ? next : normalized.map(rule => rule.id)
+            return next.length ? next : defaultSelectedRuleIds(normalized)
           })
           localStorage.setItem('apkflow-channel-rules', JSON.stringify(normalized))
           setRuleEditMessage('规则已保存，重新检测会使用当前选择的规则。')
@@ -723,7 +728,7 @@ export function UploadWorkspace() {
 
       function resetRules() {
         setRules(channelRules)
-        setSelectedChannels(channelRules.map(rule => rule.id))
+        setSelectedChannels(defaultSelectedRuleIds(channelRules))
         setRulesJson(JSON.stringify(channelRules, null, 2))
         localStorage.removeItem('apkflow-channel-rules')
         setRuleEditMessage('已恢复默认规则。')
