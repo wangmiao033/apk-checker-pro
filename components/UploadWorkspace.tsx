@@ -6,6 +6,17 @@ import { ResultDashboard } from './ResultDashboard'
 
 type EngineMode = 'full' | 'degraded' | 'unavailable'
 type ViewKey = 'dashboard' | 'history' | 'rules' | 'reports' | 'settings'
+type ToolHealth = Record<'unzip' | 'aapt' | 'apksigner' | 'strings', boolean>
+
+type EngineHealth = {
+  service?: string
+  maxUploadMB?: number
+  mode: EngineMode
+  tools?: Partial<ToolHealth>
+  message?: string
+  checkedAt?: string
+  version?: string
+}
 
 type HistoryItem = {
   id: string
@@ -45,10 +56,89 @@ function healthApiUrl() {
   }
 }
 
+const MB = 1024 * 1024
+
+function maxUploadMB() {
+  return process.env.NEXT_PUBLIC_ANALYZE_API_URL ? 500 : 4
+}
+
 function engineText(mode: EngineMode) {
   if (mode === 'full') return '完整检测模式'
   if (mode === 'degraded') return '降级检测模式'
   return '检测引擎异常'
+}
+
+function formatBytes(bytes: number) {
+  if (bytes >= 1024 * MB) return `${(bytes / 1024 / MB).toFixed(2)} GB`
+  if (bytes >= MB) return `${(bytes / MB).toFixed(2)} MB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`
+  return `${bytes} B`
+}
+
+function networkErrorMessage(apiUrl: string, reason: string) {
+  return [
+    '浏览器无法连接检测后端，请先确认后端域名可以直接访问。',
+    `请求地址：${apiUrl}`,
+    `原始错误：${reason}`,
+    '如果本机启用了代理、VPN、杀毒软件或浏览器代理插件，请把 apk-api.hnchpower.cn 加入直连/绕过列表后重试。'
+  ].join('\n')
+}
+
+function postAnalyze(form: FormData, onProgress: (progress: number) => void) {
+  const apiUrl = analyzeApiUrl()
+
+  return new Promise<any>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', apiUrl)
+    xhr.responseType = 'text'
+    xhr.timeout = 15 * 60 * 1000
+
+    xhr.upload.onprogress = event => {
+      if (!event.lengthComputable) return
+      onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)))
+    }
+
+    xhr.onload = () => {
+      const raw = xhr.responseText || ''
+      let json: any = null
+      try {
+        json = raw ? JSON.parse(raw) : null
+      } catch {
+        json = null
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        if (!json) reject(new Error('检测接口返回了非 JSON 内容，请检查后端服务是否正常。'))
+        else resolve(json)
+        return
+      }
+
+      if (xhr.status === 413) {
+        reject(new Error(process.env.NEXT_PUBLIC_ANALYZE_API_URL
+          ? 'APK 文件超过检测后端上传限制，请检查后端 500MB 限制和网关 body size 配置。'
+          : '当前请求仍在使用 Vercel 演示接口，最大只支持 4MB。请配置 NEXT_PUBLIC_ANALYZE_API_URL 指向独立检测后端。'))
+        return
+      }
+
+      reject(new Error(json?.error || raw || `检测失败，HTTP 状态码：${xhr.status}`))
+    }
+
+    xhr.onerror = () => reject(new Error(networkErrorMessage(apiUrl, 'ERR_CONNECTION_RESET / Failed to fetch')))
+    xhr.ontimeout = () => reject(new Error(networkErrorMessage(apiUrl, '请求超时')))
+    xhr.onabort = () => reject(new Error('检测请求已取消。'))
+    xhr.send(form)
+  })
+}
+
+function ToolBadge({ label, ok }: { label: string; ok?: boolean }) {
+  return (
+    <span className={classNames(
+      'rounded-full px-3 py-1 text-xs font-semibold',
+      ok ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
+    )}>
+      {label}: {ok ? '可用' : '异常'}
+    </span>
+  )
 }
 
 export function UploadWorkspace() {
@@ -62,6 +152,10 @@ export function UploadWorkspace() {
   const [error, setError] = useState('')
   const [engineMode, setEngineMode] = useState<EngineMode>('unavailable')
   const [engineMessage, setEngineMessage] = useState('检测引擎异常')
+  const [engineHealth, setEngineHealth] = useState<EngineHealth | null>(null)
+  const [healthError, setHealthError] = useState('')
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -72,23 +166,38 @@ export function UploadWorkspace() {
     }
   }, [])
 
-  useEffect(() => {
+  const refreshHealth = useCallback(() => {
     let alive = true
     fetch(healthApiUrl())
-      .then(res => res.json())
+      .then(async res => {
+        const raw = await res.text()
+        let json: any = null
+        try { json = raw ? JSON.parse(raw) : null } catch {}
+        if (!res.ok) throw new Error(json?.error || raw || `HTTP ${res.status}`)
+        if (!json) throw new Error('健康检查返回了非 JSON 内容')
+        return json
+      })
       .then(json => {
         if (!alive) return
         const mode = (json.mode || 'unavailable') as EngineMode
         setEngineMode(mode)
         setEngineMessage(json.message || engineText(mode))
+        setEngineHealth(json)
+        setHealthError('')
       })
-      .catch(() => {
+      .catch((err: any) => {
         if (!alive) return
         setEngineMode('unavailable')
         setEngineMessage('检测引擎异常')
+        setEngineHealth(null)
+        setHealthError(err?.message || '健康检查失败')
       })
     return () => { alive = false }
   }, [])
+
+  useEffect(() => {
+    return refreshHealth()
+  }, [refreshHealth])
 
   const stats = useMemo(() => {
     const total = history.length
@@ -113,6 +222,11 @@ export function UploadWorkspace() {
       setError('只允许上传 .apk 文件')
       return
     }
+    const limitMB = maxUploadMB()
+    if (nextFile.size > limitMB * MB) {
+      setError(`文件大小为 ${formatBytes(nextFile.size)}，超过当前环境 ${limitMB}MB 上传限制。`)
+      return
+    }
     setFile(nextFile)
   }
 
@@ -135,29 +249,15 @@ export function UploadWorkspace() {
     setLoading(true)
     setError('')
     setResult(null)
+    setUploadProgress(0)
 
     const form = new FormData()
     form.append('file', file)
     form.append('channels', JSON.stringify(selectedChannels))
 
     try {
-      const response = await fetch(analyzeApiUrl(), { method: 'POST', body: form })
-      const raw = await response.text()
-      let json: any = null
-      try {
-        json = raw ? JSON.parse(raw) : null
-      } catch {
-        json = null
-      }
-      if (!response.ok) {
-        if (response.status === 413) {
-          throw new Error(process.env.NEXT_PUBLIC_ANALYZE_API_URL
-            ? 'APK 文件超过检测后端上传限制，请检查后端 500MB 限制和网关 body size 配置。'
-            : '当前请求仍在使用 Vercel 演示接口，最大只支持 4MB。请配置 NEXT_PUBLIC_ANALYZE_API_URL 指向独立检测后端。')
-        }
-        throw new Error(json?.error || raw || '检测失败')
-      }
-      if (!json) throw new Error('检测接口返回了非 JSON 内容，请检查后端服务是否正常。')
+      const json = await postAnalyze(form, setUploadProgress)
+      setUploadProgress(100)
 
       setResult(json)
       setActiveView('dashboard')
@@ -174,6 +274,7 @@ export function UploadWorkspace() {
       setError(err.message || '检测失败')
     } finally {
       setLoading(false)
+      setTimeout(() => setUploadProgress(0), 800)
     }
   }
 
@@ -193,6 +294,14 @@ export function UploadWorkspace() {
               <button type="button" className="btn-secondary" onClick={() => downloadText('apkflow-report.json', JSON.stringify(result, null, 2))}>下载报告</button>
             </div>
           </div>
+          {loading && (
+            <div className="mt-5">
+              <div className="flex justify-between text-xs font-semibold text-slate-500"><span>上传与检测中</span><span>{uploadProgress}%</span></div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                <div className="h-full rounded-full bg-slate-950 transition-all" style={{ width: `${uploadProgress}%` }} />
+              </div>
+            </div>
+          )}
           <input ref={inputRef} type="file" accept=".apk" className="hidden" onChange={event => chooseFile(event.target.files?.[0] || null)} />
         </div>
       )
@@ -214,6 +323,55 @@ export function UploadWorkspace() {
         <div className="mt-5 text-lg font-black">{file ? file.name : '点击或拖拽 APK 到这里'}</div>
         <div className="mt-2 text-sm text-slate-500">
           {process.env.NEXT_PUBLIC_ANALYZE_API_URL ? '独立检测后端最大支持 500MB' : '当前演示环境最大支持 4MB'}
+        </div>
+        {loading && (
+          <div className="mx-auto mt-6 max-w-md">
+            <div className="flex justify-between text-xs font-semibold text-slate-500"><span>上传与检测中</span><span>{uploadProgress}%</span></div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+              <div className="h-full rounded-full bg-slate-950 transition-all" style={{ width: `${uploadProgress}%` }} />
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function renderDiagnostics() {
+    return (
+      <div className="mb-6 rounded-[2rem] border border-slate-200 bg-white/85 p-5 shadow-sm backdrop-blur">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-black">检测后端诊断</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500">用于排查 Failed to fetch、连接重置、代理拦截和工具缺失。</p>
+          </div>
+          <div className="flex gap-3">
+            <button type="button" className="btn-secondary" onClick={refreshHealth}>重新检测后端</button>
+            <a className="btn-secondary" href={healthApiUrl()} target="_blank" rel="noreferrer">打开 health</a>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 text-sm md:grid-cols-2">
+          <div className="rounded-2xl bg-slate-50 p-4">
+            <div className="text-xs font-semibold uppercase text-slate-400">Analyze API</div>
+            <div className="mt-2 break-all font-semibold text-slate-800">{analyzeApiUrl()}</div>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-4">
+            <div className="text-xs font-semibold uppercase text-slate-400">Health API</div>
+            <div className="mt-2 break-all font-semibold text-slate-800">{healthApiUrl()}</div>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <ToolBadge label="unzip" ok={engineHealth?.tools?.unzip} />
+          <ToolBadge label="aapt" ok={engineHealth?.tools?.aapt} />
+          <ToolBadge label="apksigner" ok={engineHealth?.tools?.apksigner} />
+          <ToolBadge label="strings" ok={engineHealth?.tools?.strings} />
+        </div>
+        <div className="mt-4 rounded-2xl bg-slate-950 p-4 text-sm leading-6 text-slate-100">
+          <div>当前模式：{engineMessage}</div>
+          <div>上传限制：{engineHealth?.maxUploadMB || maxUploadMB()}MB</div>
+          <div>检查时间：{engineHealth?.checkedAt || '未完成'}</div>
+          {engineHealth?.version && <div>后端版本：{engineHealth.version}</div>}
+          {healthError && <div className="mt-2 text-rose-200">健康检查错误：{healthError}</div>}
+          <div className="mt-2 text-slate-300">如果 Chrome 仍提示连接失败，请检查代理/VPN/安全软件是否拦截 apk-api.hnchpower.cn。</div>
         </div>
       </div>
     )
@@ -317,10 +475,22 @@ export function UploadWorkspace() {
             <div className="rounded-3xl border border-slate-200 bg-white p-5">
               <h3 className="font-black">检测引擎</h3>
               <p className="mt-2 text-sm leading-6 text-slate-500">当前状态：{engineMessage}。完整模式需要 unzip、aapt、apksigner、strings 均可用。</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <ToolBadge label="unzip" ok={engineHealth?.tools?.unzip} />
+                <ToolBadge label="aapt" ok={engineHealth?.tools?.aapt} />
+                <ToolBadge label="apksigner" ok={engineHealth?.tools?.apksigner} />
+                <ToolBadge label="strings" ok={engineHealth?.tools?.strings} />
+              </div>
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-5">
               <h3 className="font-black">安全边界</h3>
               <p className="mt-2 text-sm leading-6 text-slate-500">只做静态分析，不安装 APK，不启动游戏，不执行 APK 内代码。</p>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 md:col-span-2">
+              <h3 className="font-black">接口诊断</h3>
+              <p className="mt-2 break-all text-sm leading-6 text-slate-500">Analyze API：{analyzeApiUrl()}</p>
+              <p className="mt-1 break-all text-sm leading-6 text-slate-500">Health API：{healthApiUrl()}</p>
+              {healthError && <p className="mt-2 text-sm font-semibold text-rose-600">健康检查错误：{healthError}</p>}
             </div>
           </div>
         </section>
@@ -338,7 +508,7 @@ export function UploadWorkspace() {
             <div className="mt-6 flex flex-wrap items-center gap-3">
               {!result && <button onClick={analyze} disabled={loading} className="btn-primary">{loading ? '检测中，请稍候...' : '开始检测'}</button>}
               <button onClick={() => { setFile(null); setResult(null); setError('') }} className="btn-secondary">重置</button>
-              {error && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</div>}
+              {error && <div className="whitespace-pre-wrap rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium leading-6 text-rose-700">{error}</div>}
             </div>
           </div>
 
@@ -406,10 +576,10 @@ export function UploadWorkspace() {
               <div className="text-sm font-semibold text-blue-700">APK CHANNEL PRECHECK</div>
               <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">APKFlow 渠道提审检测平台</h1>
             </div>
-            <div className="flex items-center gap-3 rounded-3xl border border-white/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur">
+            <button type="button" onClick={() => setDiagnosticsOpen(open => !open)} className="flex items-center gap-3 rounded-3xl border border-white/80 bg-white/80 px-4 py-3 text-left shadow-sm backdrop-blur transition hover:bg-white">
               <div className={classNames('h-2.5 w-2.5 rounded-full', engineMode === 'full' ? 'bg-emerald-500' : engineMode === 'degraded' ? 'bg-amber-500' : 'bg-rose-500')} />
               <div className="text-sm font-semibold">{engineMessage}</div>
-            </div>
+            </button>
           </header>
 
           <div className="mb-6 flex gap-2 overflow-auto lg:hidden">
@@ -419,6 +589,8 @@ export function UploadWorkspace() {
               </button>
             ))}
           </div>
+
+          {diagnosticsOpen && renderDiagnostics()}
 
           {renderContent()}
         </section>

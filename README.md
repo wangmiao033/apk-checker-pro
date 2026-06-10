@@ -90,6 +90,7 @@ It provides:
 - `POST /api/analyze`
 - `GET /api/health`
 - `GET /health`
+- `GET /api/version`
 
 Runtime behavior:
 
@@ -105,6 +106,7 @@ Runtime behavior:
 - no emulator or device is used
 - parse failures return `parse_error`, not `failed`
 - parse failures show "评分不可用" and do not generate channel failure conclusions
+- health responses include the current engine mode, tool availability, upload limit, and backend version
 
 Security boundary:
 
@@ -125,6 +127,7 @@ Health check:
 
 ```bash
 curl http://localhost:8080/api/health
+curl http://localhost:8080/api/version
 ```
 
 ### Backend Dependencies

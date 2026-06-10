@@ -6,6 +6,7 @@ const cors = require('cors')
 const express = require('express')
 const multer = require('multer')
 const { analyzeApk, getEngineHealth } = require('./lib/analyzer')
+const pkg = require('./package.json')
 
 const app = express()
 const port = Number(process.env.PORT || 8080)
@@ -60,6 +61,7 @@ const upload = multer({
 function health(_req, res) {
   res.json({
     service: 'apk-checker-api',
+    version: pkg.version,
     maxUploadMB: 500,
     ...getEngineHealth()
   })
@@ -67,6 +69,15 @@ function health(_req, res) {
 
 app.get('/health', health)
 app.get('/api/health', health)
+app.get('/api/version', (_req, res) => {
+  res.json({
+    service: 'apk-checker-api',
+    version: pkg.version,
+    node: process.version,
+    uptime: Math.round(process.uptime()),
+    now: new Date().toISOString()
+  })
+})
 
 app.post('/api/analyze', upload.single('file'), (req, res) => {
   const filePath = req.file && req.file.path
