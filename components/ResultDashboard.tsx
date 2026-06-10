@@ -36,6 +36,20 @@ function logStatusText(status: string) {
   return '跳过'
 }
 
+function hardCheckClass(status: string) {
+  if (status === 'pass') return 'rounded-3xl border border-emerald-200 bg-emerald-50 p-5'
+  if (status === 'blocker') return 'rounded-3xl border border-rose-200 bg-rose-50 p-5'
+  if (status === 'warning') return 'rounded-3xl border border-amber-200 bg-amber-50 p-5'
+  return 'rounded-3xl border border-slate-200 bg-slate-50 p-5'
+}
+
+function hardCheckStatusText(status: string) {
+  if (status === 'pass') return '通过'
+  if (status === 'blocker') return '阻断'
+  if (status === 'warning') return '警告'
+  return '无法解析，需要人工确认'
+}
+
 export function ResultDashboard({ result }: { result: any }) {
   if (!result) return null
 
@@ -99,6 +113,7 @@ export function ResultDashboard({ result }: { result: any }) {
             {[
               ['文件名', result.apkInfo.fileName],
               ['文件大小', result.apkInfo.fileSize],
+              ['appName', result.apkInfo.appName],
               ['packageName', result.apkInfo.packageName],
               ['versionName', result.apkInfo.versionName],
               ['versionCode', result.apkInfo.versionCode],
@@ -149,6 +164,35 @@ export function ResultDashboard({ result }: { result: any }) {
               ))}
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="glass-card p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-bold">硬性检测项</h3>
+            <p className="mt-1 text-sm text-slate-500">按渠道上架前强制要求输出当前值、要求值和整改建议。无法解析时不判定为通过。</p>
+          </div>
+          {parseError && <span className="status-warn">无法解析，需要人工确认</span>}
+        </div>
+        <div className="mt-5 grid gap-4 xl:grid-cols-2">
+          {(result.hardChecks || []).map((item: any) => (
+            <div key={item.key} className={hardCheckClass(item.status)}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <span className={levelClass(item.level)}>{hardCheckStatusText(item.status)}</span>
+                  <h4 className="mt-3 text-lg font-black">{item.title}</h4>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+                <div className="rounded-2xl bg-white/70 p-3"><span className="text-slate-500">当前值：</span><b>{display(item.currentValue)}</b></div>
+                <div className="rounded-2xl bg-white/70 p-3"><span className="text-slate-500">要求值：</span><b>{display(item.expectedValue)}</b></div>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-slate-700">{item.description}</p>
+              <p className="mt-3 rounded-2xl bg-white/80 p-3 text-sm leading-6 text-slate-800">整改建议：{item.suggestion}</p>
+              {item.unityTip && <p className="mt-3 rounded-2xl bg-slate-950 p-3 text-sm leading-6 text-slate-100">{item.unityTip}</p>}
+            </div>
+          ))}
         </div>
       </section>
 

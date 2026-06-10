@@ -11,6 +11,7 @@ import type {
   DetectionLogItem,
   DetectionMode,
   EngineHealth,
+  HardCheckItem,
   RiskItem,
   ToolHealth
 } from './types'
@@ -126,6 +127,102 @@ function logItem(key: DetectionLogItem['key'], label: string, ok: boolean, succe
   }
 }
 
+function abiListText(abiInfo: AbiInfo): string {
+  const found = ABI_LIST.filter(abi => abiInfo[abi] === true)
+  if (ABI_LIST.some(abi => abiInfo[abi] === null)) return 'ABI 扫描失败'
+  return found.length ? found.join('、') : '未检测到 lib/ ABI 目录'
+}
+
+function buildHardChecks(targetSdkVersion: number | null, abiInfo: AbiInfo, abiScanOk: boolean): HardCheckItem[] {
+  const targetCheck: HardCheckItem = targetSdkVersion === null
+    ? {
+        key: 'targetSdkVersion',
+        title: 'targetSdkVersion 无法解析',
+        status: 'unknown',
+        level: 'info',
+        currentValue: '未解析',
+        expectedValue: '>= 30',
+        description: '无法从 Manifest 解析 targetSdkVersion，不能判定为通过，需要人工确认。',
+        suggestion: '请确认 APK 可被 aapt 正常解析，并人工核对 AndroidManifest.xml / Gradle / Unity Target API Level。'
+      }
+    : targetSdkVersion < 30
+      ? {
+          key: 'targetSdkVersion',
+          title: 'targetSdkVersion 低于要求',
+          status: 'blocker',
+          level: 'blocker',
+          currentValue: String(targetSdkVersion),
+          expectedValue: '>= 30',
+          description: `当前 targetSdkVersion=${targetSdkVersion}，低于渠道要求。渠道通常要求 targetSdkVersion >= 30。`,
+          suggestion: '请研发将 targetSdkVersion / Unity Target API Level 升级到 30 或以上，建议 33/34/35/36。',
+          unityTip: 'Unity 路径：File > Build Settings > Player Settings > Other Settings > Target API Level'
+        }
+      : {
+          key: 'targetSdkVersion',
+          title: 'targetSdkVersion 达标',
+          status: 'pass',
+          level: 'info',
+          currentValue: String(targetSdkVersion),
+          expectedValue: '>= 30',
+          description: `当前 targetSdkVersion=${targetSdkVersion}，满足渠道基础要求。`,
+          suggestion: '保持当前 Target API Level，并在升级 Unity/Android SDK 后继续回归兼容性。'
+        }
+
+  let abiCheck: HardCheckItem
+  const hasArm64 = abiInfo['arm64-v8a'] === true
+  const hasArmv7 = abiInfo['armeabi-v7a'] === true
+
+  if (!abiScanOk) {
+    abiCheck = {
+      key: 'abiCompatibility',
+      title: 'ABI 扫描失败',
+      status: 'unknown',
+      level: 'info',
+      currentValue: '未解析',
+      expectedValue: '同时包含 armeabi-v7a + arm64-v8a',
+      description: '无法读取 APK 的 lib/ 目录，不能确认 32/64 位兼容情况，需要人工确认。',
+      suggestion: '请确认 APK Zip 结构完整，或人工解压检查 lib/armeabi-v7a/ 与 lib/arm64-v8a/。'
+    }
+  } else if (!hasArm64) {
+    abiCheck = {
+      key: 'abiCompatibility',
+      title: hasArmv7 ? '纯 32 位包体' : '缺少 arm64-v8a',
+      status: 'blocker',
+      level: 'blocker',
+      currentValue: abiListText(abiInfo),
+      expectedValue: '必须包含 arm64-v8a；推荐同时包含 armeabi-v7a + arm64-v8a',
+      description: hasArmv7
+        ? '当前 APK 只有 armeabi-v7a 等 32 位 ABI，没有 arm64-v8a，属于纯 32 位包。'
+        : 'APK 未检测到 lib/arm64-v8a/，当前包体不满足 64 位要求。',
+      suggestion: '请研发重新输出 64 位包体，并确保最终 APK 至少包含 lib/arm64-v8a/；如需兼容 32 位设备，建议同时保留 lib/armeabi-v7a/。'
+    }
+  } else if (!hasArmv7) {
+    abiCheck = {
+      key: 'abiCompatibility',
+      title: '只有 64 位 ABI',
+      status: 'warning',
+      level: 'medium',
+      currentValue: abiListText(abiInfo),
+      expectedValue: '同时包含 armeabi-v7a + arm64-v8a',
+      description: 'APK 已包含 arm64-v8a，满足 64 位基础要求，但未检测到 armeabi-v7a，不是 32/64 兼容包。',
+      suggestion: '如果渠道或业务仍需兼容 32 位设备，请研发同时输出 lib/armeabi-v7a/ 与 lib/arm64-v8a/。'
+    }
+  } else {
+    abiCheck = {
+      key: 'abiCompatibility',
+      title: '32/64 兼容包通过',
+      status: 'pass',
+      level: 'info',
+      currentValue: abiListText(abiInfo),
+      expectedValue: '同时包含 armeabi-v7a + arm64-v8a',
+      description: 'APK 同时包含 armeabi-v7a 与 arm64-v8a，满足 32/64 兼容包要求。',
+      suggestion: '保持当前 ABI 输出配置，提审前继续确认各渠道包没有被二次裁剪。'
+    }
+  }
+
+  return [targetCheck, abiCheck]
+}
+
 export function analyzeApk(filePath: string, selectedChannelIds?: string[]): AnalyzeResult {
   const stat = fs.statSync(filePath)
   const originalName = path.basename(filePath).replace(/^\d+-[a-f0-9]+-/, '')
@@ -166,6 +263,8 @@ export function analyzeApk(filePath: string, selectedChannelIds?: string[]): Ana
   const packageName = packageMatch ? packageMatch[1] : null
   const versionCode = packageMatch ? packageMatch[2] || null : null
   const versionName = packageMatch ? packageMatch[3] || null : null
+  const appNameMatch = badging.output.match(/application-label:'([^']*)'/)
+  const appName = appNameMatch ? appNameMatch[1] || null : null
   const minMatch = badging.output.match(/sdkVersion:'(\d+)'/)
   const targetMatch = badging.output.match(/targetSdkVersion:'(\d+)'/)
   const minSdkVersion = minMatch ? Number(minMatch[1]) : null
@@ -202,6 +301,7 @@ export function analyzeApk(filePath: string, selectedChannelIds?: string[]): Ana
   const selectedRules = selectedChannelIds?.length
     ? channelRules.filter(rule => selectedChannelIds.includes(rule.id))
     : channelRules
+  const hardChecks = buildHardChecks(targetSdkVersion, abiInfo, abiScanOk)
 
   const reportMeta = {
     reportId,
@@ -226,6 +326,7 @@ export function analyzeApk(filePath: string, selectedChannelIds?: string[]): Ana
         fileSize: formatSize(stat.size),
         fileSizeBytes: stat.size,
         packageName,
+        appName,
         versionCode,
         versionName,
         minSdkVersion,
@@ -239,6 +340,7 @@ export function analyzeApk(filePath: string, selectedChannelIds?: string[]): Ana
       sensitivePermissions,
       httpUrls,
       debugKeywords,
+      hardChecks,
       risks: [{
         level: 'info' as const,
         title: '解析失败',
@@ -269,18 +371,13 @@ export function analyzeApk(filePath: string, selectedChannelIds?: string[]): Ana
     failReasons.push('APK 未检测到 lib/arm64-v8a/，当前包体不满足 64 位要求。')
     risks.push({
       level: 'blocker',
-      title: '缺少 arm64-v8a',
-      detail: 'APK 未检测到 lib/arm64-v8a/，当前包体不满足 64 位要求。',
-      fix: '请研发重新输出 64 位包体，并确保最终 APK 包含 lib/arm64-v8a/。'
-    })
-  }
-  if (baseChecks.isPure32Bit) {
-    failReasons.push('当前 APK 属于纯 32 位包体。')
-    risks.push({
-      level: 'blocker',
-      title: '纯 32 位包体',
-      detail: '检测到 32 位 ABI，但未检测到 64 位 ABI。',
-      fix: '输出 32/64 兼容包，至少包含 armeabi-v7a 与 arm64-v8a；或按渠道要求输出纯 64 位包。'
+      title: abiInfo['armeabi-v7a'] ? '纯 32 位包体' : '缺少 arm64-v8a',
+      detail: abiInfo['armeabi-v7a']
+        ? '当前 APK 只有 armeabi-v7a 等 32 位 ABI，没有 arm64-v8a，属于纯 32 位包。'
+        : 'APK 未检测到 lib/arm64-v8a/，当前包体不满足 64 位要求。',
+      currentValue: abiListText(abiInfo),
+      expectedValue: '必须包含 arm64-v8a；推荐同时包含 armeabi-v7a + arm64-v8a',
+      fix: '请研发重新输出 64 位包体，并确保最终 APK 至少包含 lib/arm64-v8a/；如需兼容 32 位设备，建议同时保留 lib/armeabi-v7a/。'
     })
   }
   if (targetSdkVersion !== null && targetSdkVersion < 30) {
@@ -288,8 +385,20 @@ export function analyzeApk(filePath: string, selectedChannelIds?: string[]): Ana
     risks.push({
       level: 'blocker',
       title: 'targetSdkVersion 低于要求',
-      detail: `当前 targetSdkVersion=${targetSdkVersion}，基础要求为 >= 30。`,
-      fix: '升级 targetSdkVersion 至 30 或以上，并完成兼容性回归。'
+      detail: `当前 targetSdkVersion=${targetSdkVersion}，低于渠道要求。渠道通常要求 targetSdkVersion >= 30。`,
+      currentValue: targetSdkVersion,
+      expectedValue: '>= 30',
+      fix: '请研发将 targetSdkVersion / Unity Target API Level 升级到 30 或以上，建议 33/34/35/36。Unity 路径：File > Build Settings > Player Settings > Other Settings > Target API Level'
+    })
+  }
+  if (baseChecks.hasArm64 && abiInfo['armeabi-v7a'] === false) {
+    risks.push({
+      level: 'medium',
+      title: '只有 64 位 ABI',
+      detail: 'APK 已包含 arm64-v8a，满足 64 位基础要求，但未检测到 armeabi-v7a，不是 32/64 兼容包。',
+      currentValue: abiListText(abiInfo),
+      expectedValue: '同时包含 armeabi-v7a + arm64-v8a',
+      fix: '如果渠道或业务仍需兼容 32 位设备，请研发同时输出 lib/armeabi-v7a/ 与 lib/arm64-v8a/。'
     })
   }
   if (!signatureOk) {
@@ -385,6 +494,7 @@ export function analyzeApk(filePath: string, selectedChannelIds?: string[]): Ana
       versionName,
       minSdkVersion,
       targetSdkVersion,
+      appName,
       hasSignature: signatureOk,
       parseSuccess: true
     },
@@ -395,6 +505,7 @@ export function analyzeApk(filePath: string, selectedChannelIds?: string[]): Ana
     httpUrls,
     debugKeywords,
     risks,
+    hardChecks,
     channelChecks,
     failReasons
   }

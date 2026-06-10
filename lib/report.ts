@@ -43,9 +43,16 @@ export function buildDeveloperMessage(result: BaseResult): string {
   }
 
   const reasons = result.failReasons.map((item, index) => `${index + 1}. ${item}`).join('\n')
-  const riskFixes = result.risks
-    .filter(r => r.fix)
-    .map((r, index) => `${index + 1}. ${r.fix}`)
+  const hardCheckFixes = result.hardChecks
+    .filter(item => item.status !== 'pass')
+    .map((item, index) => [
+      `${index + 1}. ${item.title}`,
+      `   当前值：${item.currentValue}`,
+      `   要求值：${item.expectedValue}`,
+      `   说明：${item.description}`,
+      `   整改：${item.suggestion}`,
+      item.unityTip ? `   Unity 提示：${item.unityTip}` : ''
+    ].filter(Boolean).join('\n'))
     .join('\n')
 
   return [
@@ -55,7 +62,7 @@ export function buildDeveloperMessage(result: BaseResult): string {
     reasons,
     '',
     '整改说明：',
-    riskFixes || '1. 请重新输出 64 位包体，并确保 targetSdkVersion >= 30。',
+    hardCheckFixes || '1. 请重新输出 64 位包体，并确保 targetSdkVersion >= 30。',
     '',
     '处理完成后，请重新上传 APKFlow 复测。'
   ].join('\n')
@@ -68,7 +75,9 @@ export function buildOperationMessage(result: BaseResult): string {
   if (result.status === 'passed') {
     return 'APK 提交前检测通过：包体支持 64 位，未发现阻断型渠道提审问题。'
   }
-  return `APK 提交前检测不通过，暂不建议提交渠道。主要问题：${result.failReasons.join('；')}`
+  const blockers = result.hardChecks.filter(item => item.status === 'blocker').map(item => item.title)
+  const warnings = result.hardChecks.filter(item => item.status === 'warning' || item.status === 'unknown').map(item => item.title)
+  return `APK 提交前检测不通过，暂不建议提交渠道。阻断问题：${blockers.join('；') || result.failReasons.join('；')}。${warnings.length ? `需关注：${warnings.join('；')}。` : ''}`
 }
 
 function esc(input: unknown) {
@@ -92,6 +101,7 @@ export function buildHtmlReport(result: Omit<AnalyzeResult, 'htmlReport'>): stri
     return `<tr><td>${esc(abi)}</td><td>${abi.includes('64') ? '64 位' : '32 位'}</td><td>${state}</td></tr>`
   }).join('')
   const logHtml = result.detectionLogs.map(log => `<tr><td>${esc(log.label)}</td><td>${log.status === 'success' ? '成功' : log.status === 'failed' ? '失败' : '跳过'}</td><td>${esc(log.message)}</td></tr>`).join('')
+  const hardCheckHtml = result.hardChecks.map(item => `<tr><td>${esc(item.status)}</td><td>${esc(item.title)}</td><td>${esc(item.currentValue)}</td><td>${esc(item.expectedValue)}</td><td>${esc(item.description)}</td><td>${esc(item.suggestion)}</td></tr>`).join('')
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -114,10 +124,11 @@ th{background:#f8fafc;color:#475569}pre{white-space:pre-wrap;background:#f8fafc;
 <div class="container">
 <div class="card"><div class="score">${esc(scoreText)}</div><h2>${esc(statusText)} / 等级 ${esc(gradeText)}</h2><p>${esc(result.summary)}</p></div>
 <div class="card"><h2>报告信息</h2><p>报告编号：${esc(result.reportMeta.reportId)}</p><p>检测规则版本：${esc(result.reportMeta.ruleVersion)}</p><p>当前检测模式：${esc(result.reportMeta.detectionMode)}</p></div>
-<div class="card"><h2>APK 基础信息</h2><p>文件：${esc(result.apkInfo.fileName)}，${esc(result.apkInfo.fileSize)}</p><p>包名：${esc(display(result.apkInfo.packageName))}</p><p>版本：${esc(display(result.apkInfo.versionName))} / ${esc(display(result.apkInfo.versionCode))}</p><p>minSdkVersion：${esc(display(result.apkInfo.minSdkVersion))}，targetSdkVersion：${esc(display(result.apkInfo.targetSdkVersion))}</p></div>
+<div class="card"><h2>APK 基础信息</h2><p>文件：${esc(result.apkInfo.fileName)}，${esc(result.apkInfo.fileSize)}</p><p>应用名：${esc(display(result.apkInfo.appName))}</p><p>包名：${esc(display(result.apkInfo.packageName))}</p><p>版本：${esc(display(result.apkInfo.versionName))} / ${esc(display(result.apkInfo.versionCode))}</p><p>minSdkVersion：${esc(display(result.apkInfo.minSdkVersion))}，targetSdkVersion：${esc(display(result.apkInfo.targetSdkVersion))}</p></div>
 <div class="card"><h2>APK Hash</h2><p>MD5：${esc(result.apkHash.md5)}</p><p>SHA1：${esc(result.apkHash.sha1)}</p><p>SHA256：${esc(result.apkHash.sha256)}</p></div>
 <div class="card"><h2>检测日志</h2><table><tr><th>项目</th><th>状态</th><th>说明</th></tr>${logHtml}</table></div>
 <div class="card"><h2>CPU 架构</h2><table><tr><th>ABI</th><th>类型</th><th>结果</th></tr>${abiHtml}</table></div>
+<div class="card"><h2>硬性检测项</h2><table><tr><th>状态</th><th>标题</th><th>当前值</th><th>要求值</th><th>说明</th><th>整改建议</th></tr>${hardCheckHtml}</table></div>
 <div class="card"><h2>渠道规则</h2><table><tr><th>渠道</th><th>结论</th><th>分数</th><th>说明</th></tr>${channelHtml}</table></div>
 <div class="card"><h2>风险项</h2><table><tr><th>级别</th><th>问题</th><th>说明</th><th>整改</th></tr>${riskHtml}</table></div>
 <div class="card"><h2>研发整改说明</h2><pre>${esc(result.developerMessage)}</pre></div>

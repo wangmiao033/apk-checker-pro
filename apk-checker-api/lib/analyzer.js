@@ -117,6 +117,102 @@ function logItem(key, label, ok, successMessage, errorMessage) {
   return { key, label, status: ok ? 'success' : 'failed', message: ok ? successMessage : errorMessage }
 }
 
+function abiListText(abiInfo) {
+  const found = ABI_LIST.filter(abi => abiInfo[abi] === true)
+  if (ABI_LIST.some(abi => abiInfo[abi] === null)) return 'ABI 扫描失败'
+  return found.length ? found.join('、') : '未检测到 lib/ ABI 目录'
+}
+
+function buildHardChecks(targetSdkVersion, abiInfo, abiScanOk) {
+  const targetCheck = targetSdkVersion === null
+    ? {
+        key: 'targetSdkVersion',
+        title: 'targetSdkVersion 无法解析',
+        status: 'unknown',
+        level: 'info',
+        currentValue: '未解析',
+        expectedValue: '>= 30',
+        description: '无法从 Manifest 解析 targetSdkVersion，不能判定为通过，需要人工确认。',
+        suggestion: '请确认 APK 可被 aapt 正常解析，并人工核对 AndroidManifest.xml / Gradle / Unity Target API Level。'
+      }
+    : targetSdkVersion < 30
+      ? {
+          key: 'targetSdkVersion',
+          title: 'targetSdkVersion 低于要求',
+          status: 'blocker',
+          level: 'blocker',
+          currentValue: String(targetSdkVersion),
+          expectedValue: '>= 30',
+          description: `当前 targetSdkVersion=${targetSdkVersion}，低于渠道要求。渠道通常要求 targetSdkVersion >= 30。`,
+          suggestion: '请研发将 targetSdkVersion / Unity Target API Level 升级到 30 或以上，建议 33/34/35/36。',
+          unityTip: 'Unity 路径：File > Build Settings > Player Settings > Other Settings > Target API Level'
+        }
+      : {
+          key: 'targetSdkVersion',
+          title: 'targetSdkVersion 达标',
+          status: 'pass',
+          level: 'info',
+          currentValue: String(targetSdkVersion),
+          expectedValue: '>= 30',
+          description: `当前 targetSdkVersion=${targetSdkVersion}，满足渠道基础要求。`,
+          suggestion: '保持当前 Target API Level，并在升级 Unity/Android SDK 后继续回归兼容性。'
+        }
+
+  let abiCheck
+  const hasArm64 = abiInfo['arm64-v8a'] === true
+  const hasArmv7 = abiInfo['armeabi-v7a'] === true
+
+  if (!abiScanOk) {
+    abiCheck = {
+      key: 'abiCompatibility',
+      title: 'ABI 扫描失败',
+      status: 'unknown',
+      level: 'info',
+      currentValue: '未解析',
+      expectedValue: '同时包含 armeabi-v7a + arm64-v8a',
+      description: '无法读取 APK 的 lib/ 目录，不能确认 32/64 位兼容情况，需要人工确认。',
+      suggestion: '请确认 APK Zip 结构完整，或人工解压检查 lib/armeabi-v7a/ 与 lib/arm64-v8a/。'
+    }
+  } else if (!hasArm64) {
+    abiCheck = {
+      key: 'abiCompatibility',
+      title: hasArmv7 ? '纯 32 位包体' : '缺少 arm64-v8a',
+      status: 'blocker',
+      level: 'blocker',
+      currentValue: abiListText(abiInfo),
+      expectedValue: '必须包含 arm64-v8a；推荐同时包含 armeabi-v7a + arm64-v8a',
+      description: hasArmv7
+        ? '当前 APK 只有 armeabi-v7a 等 32 位 ABI，没有 arm64-v8a，属于纯 32 位包。'
+        : 'APK 未检测到 lib/arm64-v8a/，当前包体不满足 64 位要求。',
+      suggestion: '请研发重新输出 64 位包体，并确保最终 APK 至少包含 lib/arm64-v8a/；如需兼容 32 位设备，建议同时保留 lib/armeabi-v7a/。'
+    }
+  } else if (!hasArmv7) {
+    abiCheck = {
+      key: 'abiCompatibility',
+      title: '只有 64 位 ABI',
+      status: 'warning',
+      level: 'medium',
+      currentValue: abiListText(abiInfo),
+      expectedValue: '同时包含 armeabi-v7a + arm64-v8a',
+      description: 'APK 已包含 arm64-v8a，满足 64 位基础要求，但未检测到 armeabi-v7a，不是 32/64 兼容包。',
+      suggestion: '如果渠道或业务仍需兼容 32 位设备，请研发同时输出 lib/armeabi-v7a/ 与 lib/arm64-v8a/。'
+    }
+  } else {
+    abiCheck = {
+      key: 'abiCompatibility',
+      title: '32/64 兼容包通过',
+      status: 'pass',
+      level: 'info',
+      currentValue: abiListText(abiInfo),
+      expectedValue: '同时包含 armeabi-v7a + arm64-v8a',
+      description: 'APK 同时包含 armeabi-v7a 与 arm64-v8a，满足 32/64 兼容包要求。',
+      suggestion: '保持当前 ABI 输出配置，提审前继续确认各渠道包没有被二次裁剪。'
+    }
+  }
+
+  return [targetCheck, abiCheck]
+}
+
 function buildDeveloperMessage(result) {
   if (result.status === 'parse_error') {
     return [
@@ -135,13 +231,36 @@ function buildDeveloperMessage(result) {
     ].join('\n')
   }
   if (result.status === 'passed') return '当前 APK 渠道提审检测通过。'
-  return ['该 APK 不符合渠道提审要求，请研发修复后重新出包。', '', ...result.failReasons.map((item, index) => `${index + 1}. ${item}`)].join('\n')
+  const hardCheckFixes = (result.hardChecks || [])
+    .filter(item => item.status !== 'pass')
+    .map((item, index) => [
+      `${index + 1}. ${item.title}`,
+      `   当前值：${item.currentValue}`,
+      `   要求值：${item.expectedValue}`,
+      `   说明：${item.description}`,
+      `   整改：${item.suggestion}`,
+      item.unityTip ? `   Unity 提示：${item.unityTip}` : ''
+    ].filter(Boolean).join('\n'))
+    .join('\n')
+  return [
+    '该 APK 不符合渠道提审要求，请研发修复后重新出包。',
+    '',
+    '失败原因：',
+    ...result.failReasons.map((item, index) => `${index + 1}. ${item}`),
+    '',
+    '整改说明：',
+    hardCheckFixes || '1. 请重新输出 64 位包体，并确保 targetSdkVersion >= 30。',
+    '',
+    '处理完成后，请重新上传 APKFlow 复测。'
+  ].join('\n')
 }
 
 function buildOperationMessage(result) {
   if (result.status === 'parse_error') return `APK 解析失败，当前环境无法完整解析该 APK。评分不可用，渠道结论不可用。原因：${result.failReasons.join('；')}`
   if (result.status === 'passed') return 'APK 提交前检测通过。'
-  return `APK 提交前检测不通过，暂不建议提交渠道。主要问题：${result.failReasons.join('；')}`
+  const blockers = (result.hardChecks || []).filter(item => item.status === 'blocker').map(item => item.title)
+  const warnings = (result.hardChecks || []).filter(item => item.status === 'warning' || item.status === 'unknown').map(item => item.title)
+  return `APK 提交前检测不通过，暂不建议提交渠道。阻断问题：${blockers.join('；') || result.failReasons.join('；')}。${warnings.length ? `需关注：${warnings.join('；')}。` : ''}`
 }
 
 function buildHtmlReport(result) {
@@ -152,6 +271,7 @@ function buildHtmlReport(result) {
 <p>规则版本：${esc(result.reportMeta.ruleVersion)}</p>
 <p>检测模式：${esc(result.reportMeta.detectionMode)}</p>
 <p>状态：${esc(result.status)}；评分：${result.score == null ? '评分不可用' : esc(result.score)}</p>
+<h2>硬性检测项</h2><pre>${esc(JSON.stringify(result.hardChecks || [], null, 2))}</pre>
 <h2>APK Hash</h2><pre>${esc(JSON.stringify(result.apkHash, null, 2))}</pre>
 <h2>扫描日志</h2><pre>${esc(JSON.stringify(result.detectionLogs, null, 2))}</pre>
 <h2>报告详情</h2><pre>${esc(JSON.stringify(result, null, 2))}</pre>
@@ -203,6 +323,8 @@ function analyzeApk(filePath, options = {}) {
   const packageName = packageMatch ? packageMatch[1] : null
   const versionCode = packageMatch ? packageMatch[2] || null : null
   const versionName = packageMatch ? packageMatch[3] || null : null
+  const appNameMatch = badging.output.match(/application-label:'([^']*)'/)
+  const appName = appNameMatch ? appNameMatch[1] || null : null
   const minMatch = badging.output.match(/sdkVersion:'(\d+)'/)
   const targetMatch = badging.output.match(/targetSdkVersion:'(\d+)'/)
   const minSdkVersion = minMatch ? Number(minMatch[1]) : null
@@ -230,6 +352,7 @@ function analyzeApk(filePath, options = {}) {
   const selectedRules = Array.isArray(options.selectedChannelIds) && options.selectedChannelIds.length
     ? CHANNEL_RULES.filter(rule => options.selectedChannelIds.includes(rule.id))
     : CHANNEL_RULES
+  const hardChecks = buildHardChecks(targetSdkVersion, abiInfo, abiScanOk)
 
   const parseErrorReasons = []
   if (!zipScanOk) parseErrorReasons.push(unzip.error || 'Zip 结构读取失败')
@@ -246,6 +369,7 @@ function analyzeApk(filePath, options = {}) {
       fileSize: formatSize(stat.size),
       fileSizeBytes: stat.size,
       packageName,
+      appName,
       versionCode,
       versionName,
       minSdkVersion,
@@ -258,7 +382,8 @@ function analyzeApk(filePath, options = {}) {
     permissions,
     sensitivePermissions,
     httpUrls,
-    debugKeywords
+    debugKeywords,
+    hardChecks
   }
 
   if (parseErrorReasons.length > 0) {
@@ -282,11 +407,37 @@ function analyzeApk(filePath, options = {}) {
   const failReasons = []
   if (checks.hasArm64 === false) {
     failReasons.push('APK 未检测到 lib/arm64-v8a/，当前包体不满足 64 位要求。')
-    risks.push({ level: 'blocker', title: '缺少 arm64-v8a', detail: 'APK 未检测到 lib/arm64-v8a/。', fix: '请研发重新输出 64 位包体。' })
+    risks.push({
+      level: 'blocker',
+      title: abiInfo['armeabi-v7a'] ? '纯 32 位包体' : '缺少 arm64-v8a',
+      detail: abiInfo['armeabi-v7a']
+        ? '当前 APK 只有 armeabi-v7a 等 32 位 ABI，没有 arm64-v8a，属于纯 32 位包。'
+        : 'APK 未检测到 lib/arm64-v8a/，当前包体不满足 64 位要求。',
+      currentValue: abiListText(abiInfo),
+      expectedValue: '必须包含 arm64-v8a；推荐同时包含 armeabi-v7a + arm64-v8a',
+      fix: '请研发重新输出 64 位包体，并确保最终 APK 至少包含 lib/arm64-v8a/；如需兼容 32 位设备，建议同时保留 lib/armeabi-v7a/。'
+    })
   }
   if (targetSdkVersion !== null && targetSdkVersion < 30) {
     failReasons.push('targetSdkVersion 低于 30，不符合渠道要求。')
-    risks.push({ level: 'blocker', title: 'targetSdkVersion 低于要求', detail: `当前 targetSdkVersion=${targetSdkVersion}。`, fix: '升级 targetSdkVersion 至 30 或以上。' })
+    risks.push({
+      level: 'blocker',
+      title: 'targetSdkVersion 低于要求',
+      detail: `当前 targetSdkVersion=${targetSdkVersion}，低于渠道要求。渠道通常要求 targetSdkVersion >= 30。`,
+      currentValue: targetSdkVersion,
+      expectedValue: '>= 30',
+      fix: '请研发将 targetSdkVersion / Unity Target API Level 升级到 30 或以上，建议 33/34/35/36。Unity 路径：File > Build Settings > Player Settings > Other Settings > Target API Level'
+    })
+  }
+  if (checks.hasArm64 && abiInfo['armeabi-v7a'] === false) {
+    risks.push({
+      level: 'medium',
+      title: '只有 64 位 ABI',
+      detail: 'APK 已包含 arm64-v8a，满足 64 位基础要求，但未检测到 armeabi-v7a，不是 32/64 兼容包。',
+      currentValue: abiListText(abiInfo),
+      expectedValue: '同时包含 armeabi-v7a + arm64-v8a',
+      fix: '如果渠道或业务仍需兼容 32 位设备，请研发同时输出 lib/armeabi-v7a/ 与 lib/arm64-v8a/。'
+    })
   }
   if (checks.hasHttp) risks.push({ level: 'medium', title: '存在 HTTP 明文地址', detail: `检测到 ${httpUrls.length} 个 HTTP 明文地址。`, fix: '将正式环境地址升级为 HTTPS。' })
   if (checks.hasSensitivePermissions) risks.push({ level: 'medium', title: '存在敏感权限', detail: sensitivePermissions.join('；'), fix: '删除无用敏感权限并同步隐私政策。' })

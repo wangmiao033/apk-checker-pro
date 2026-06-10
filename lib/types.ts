@@ -4,6 +4,7 @@ export type AbiInfo = Record<AbiName, boolean | null>
 export type DetectionStatus = 'passed' | 'failed' | 'parse_error'
 export type DetectionMode = 'full' | 'degraded' | 'unavailable'
 export type LogStatus = 'success' | 'failed' | 'skipped'
+export type HardCheckStatus = 'pass' | 'blocker' | 'warning' | 'unknown'
 
 export type ApkHash = {
   md5: string
@@ -44,6 +45,7 @@ export type ApkInfo = {
   fileSize: string
   fileSizeBytes: number
   packageName: string | null
+  appName: string | null
   versionCode: string | null
   versionName: string | null
   minSdkVersion: number | null
@@ -58,7 +60,21 @@ export type RiskItem = {
   level: RiskLevel
   title: string
   detail: string
+  currentValue?: string | number | null
+  expectedValue?: string
   fix?: string
+}
+
+export type HardCheckItem = {
+  key: 'targetSdkVersion' | 'abiCompatibility'
+  title: string
+  status: HardCheckStatus
+  level: RiskLevel
+  currentValue: string
+  expectedValue: string
+  description: string
+  suggestion: string
+  unityTip?: string
 }
 
 export type ChannelCheck = {
@@ -100,6 +116,7 @@ export type AnalyzeResult = {
   httpUrls: string[]
   debugKeywords: string[]
   risks: RiskItem[]
+  hardChecks: HardCheckItem[]
   channelChecks: ChannelCheck[]
   failReasons: string[]
   developerMessage: string

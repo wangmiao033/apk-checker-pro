@@ -107,6 +107,12 @@ Runtime behavior:
 - parse failures return `parse_error`, not `failed`
 - parse failures show "评分不可用" and do not generate channel failure conclusions
 - health responses include the current engine mode, tool availability, upload limit, and backend version
+- hard checks return Chinese explanations, risk levels, current values, expected values, and remediation suggestions
+
+Hard checks:
+
+- `targetSdkVersion`: `< 30` is `blocker`; `>= 30` passes; unparsed values are `unknown`
+- `ABI compatibility`: missing `arm64-v8a` is `blocker`; pure 32-bit packages are `blocker`; only 64-bit packages are `warning`; `armeabi-v7a + arm64-v8a` passes
 
 Security boundary:
 
