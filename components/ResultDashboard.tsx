@@ -45,6 +45,17 @@ function display(value: unknown) {
   return String(value)
 }
 
+function safeName(value: unknown) {
+  return display(value).replace(/[^\w\u4e00-\u9fa5.-]+/g, '_')
+}
+
+function exportFileName(result: any, ext: 'html' | 'md' | 'json') {
+  const pkg = safeName(result.apkInfo?.packageName || 'unknown_package')
+  const version = safeName(result.apkInfo?.versionName || result.apkInfo?.versionCode || 'unknown_version')
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  return `APKFlow_${pkg}_${version}_${date}.${ext}`
+}
+
 function statusLabel(status: IssueStatus) {
   if (status === 'fail') return '不通过'
   if (status === 'risk') return '风险'
@@ -119,6 +130,15 @@ function issueStatusFromPrivacy(item: any): IssueStatus {
   return issueStatusFromLevel(item.level) === 'info' ? 'pass' : issueStatusFromLevel(item.level)
 }
 
+function issueStatusFromStandard(status?: string): IssueStatus {
+  if (status === 'fail') return 'fail'
+  if (status === 'warning') return 'risk'
+  if (status === 'pass') return 'pass'
+  if (status === 'parse_failed' || status === 'unknown' || status === 'error') return 'parse_error'
+  if (status === 'unsupported') return 'info'
+  return 'info'
+}
+
 function issueCopyText(issue: ReportIssue) {
   return [
     `【问题】${issue.title}`,
@@ -151,6 +171,61 @@ function findingsText(findings: any[]) {
 }
 
 function buildIssueGroups(result: any): IssueGroup[] {
+  if (Array.isArray(result.detectionItems) && result.detectionItems.length > 0) {
+    const groupDefs = [
+      { id: 'basic', title: 'APK 基础信息', description: '包名、应用名、版本、Hash、Manifest 解析状态。', categories: ['basic'] },
+      { id: 'key', title: '渠道提审关键项', description: '影响是否建议提审的核心阻断项。', categories: ['abi', 'target_sdk', 'debug', 'http', 'signature'] },
+      { id: 'abi', title: 'ABI / 64 位检测', description: 'arm64-v8a、32/64 位兼容性和 so 文件分布。', categories: ['abi'] },
+      { id: 'target', title: 'targetSdkVersion 与安卓版本适配', description: '渠道 targetSdkVersion 规则和 Android 12+ exported 适配。', categories: ['target_sdk'] },
+      { id: 'privacy', title: '权限与隐私风险', description: '敏感权限、隐私政策披露和权限最小化建议。', categories: ['permissions'] },
+      { id: 'debug', title: 'Debug / 测试包风险', description: 'debuggable、测试配置和正式包风险。', categories: ['debug'] },
+      { id: 'http', title: 'HTTP 明文与网络安全', description: 'usesCleartextTraffic、networkSecurityConfig 和 http:// 地址。', categories: ['http'] },
+      { id: 'signature', title: '签名信息', description: '签名状态、签名方案、证书摘要和 Debug 签名。', categories: ['signature'] },
+      { id: 'icon', title: '图标与资源', description: '应用名、图标、roundIcon、adaptive icon 和默认图标风险。', categories: ['icon'] },
+      { id: 'size', title: '包体大小分析', description: 'assets、lib、dex、res 和 Top 大文件。', categories: ['size'] },
+      { id: 'developer', title: '研发整改清单', description: '只聚合 fail / warning，适合直接转给研发。', categories: ['developer'] }
+    ]
+
+    const items = result.detectionItems.map((item: any): ReportIssue => ({
+      id: item.id,
+      status: issueStatusFromStandard(item.status),
+      title: item.title,
+      currentValue: display(item.currentValue),
+      expectedValue: display(item.expectedValue),
+      impact: display(item.risk || item.evidence),
+      suggestion: display(item.devInstruction || item.suggestion),
+      operationNote: item.evidence
+    }))
+    const developerItems = result.detectionItems.filter((item: any) => item.status === 'fail' || item.status === 'warning')
+    const developerIssue: ReportIssue = {
+      id: 'developer-fix-list',
+      status: developerItems.some((item: any) => item.status === 'fail') ? 'fail' : developerItems.length ? 'risk' : 'pass',
+      title: '研发整改清单',
+      currentValue: developerItems.length ? `需处理 ${developerItems.length} 项 fail / warning` : '当前无 fail / warning 整改项',
+      expectedValue: '研发完成整改、重新打包，并回到 APKFlow 复测',
+      impact: '该段内容可以直接复制给研发，用于工单、飞书或企业微信沟通。',
+      suggestion: display(result.developerMessage || result.summary)
+    }
+
+    return groupDefs
+      .map(def => {
+        const issues: ReportIssue[] = def.id === 'developer'
+          ? [developerIssue]
+          : items.filter((issue: ReportIssue) => {
+            const source = result.detectionItems.find((item: any) => item.id === issue.id)
+            return source && def.categories.includes(source.category)
+          })
+        return {
+          id: def.id,
+          title: def.title,
+          description: def.description,
+          issues,
+          defaultOpen: issues.some(issue => issue.status === 'fail' || issue.status === 'risk' || issue.status === 'parse_error')
+        }
+      })
+      .filter(group => group.issues.length > 0)
+  }
+
   const parseError = result.status === 'parse_error'
   const apkInfo = result.apkInfo || {}
   const hardChecks = result.hardChecks || []
@@ -522,6 +597,33 @@ export function ResultDashboard({ result }: { result: any }) {
         <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-medium text-slate-700">
           建议动作：{actionText}
         </div>
+
+        {Array.isArray(result.scoreBreakdown) && result.scoreBreakdown.length > 0 && (
+          <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-slate-950">评分明细</h3>
+              <span className="text-xs text-slate-500">unknown / unsupported 不直接扣分</span>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {result.scoreBreakdown
+                .filter((item: any) => item.includedInScore || item.status === 'unknown' || item.status === 'unsupported')
+                .slice(0, 8)
+                .map((item: any) => (
+                  <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-900">{item.title}</div>
+                        <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{item.reason}</div>
+                      </div>
+                      <div className={item.includedInScore ? 'text-sm font-bold text-rose-600' : 'text-xs font-semibold text-slate-500'}>
+                        {item.includedInScore ? `-${item.deduction}` : '未纳入'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="space-y-4">
@@ -585,17 +687,17 @@ export function ResultDashboard({ result }: { result: any }) {
           <ExportActionButton
             title="下载报告"
             description="导出 HTML 报告，适合留档或发给非研发同事查看。"
-            onClick={() => downloadText('apkflow-channel-report.html', result.htmlReport || result.fullReportText || '', 'text/html;charset=utf-8')}
+            onClick={() => downloadText(exportFileName(result, 'html'), result.htmlReport || result.fullReportText || '', 'text/html;charset=utf-8')}
           />
           <ExportActionButton
             title="下载 Markdown"
             description="导出 Markdown 文本，适合复制到工单、知识库或飞书文档。"
-            onClick={() => downloadText('apkflow-report.md', result.markdownReport || result.fullReportText || '', 'text/markdown;charset=utf-8')}
+            onClick={() => downloadText(exportFileName(result, 'md'), result.markdownReport || result.fullReportText || '', 'text/markdown;charset=utf-8')}
           />
           <ExportActionButton
             title="下载 JSON"
             description="导出原始检测数据，方便后续排查、归档或二次处理。"
-            onClick={() => downloadText('apkflow-report.json', JSON.stringify(result, null, 2))}
+            onClick={() => downloadText(exportFileName(result, 'json'), JSON.stringify(result, null, 2))}
           />
           <div className="flex min-h-[92px] flex-col justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div>

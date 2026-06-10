@@ -1,0 +1,231 @@
+[
+  {
+    "id": "generic",
+    "channelName": "通用渠道",
+    "name": "通用渠道",
+    "logo": "A",
+    "minTargetSdkVersion": 33,
+    "targetSdkMin": 33,
+    "requireArm64": true,
+    "allowPure32Bit": false,
+    "allowDebuggable": false,
+    "allowCleartextTraffic": false,
+    "strictHttp": true,
+    "maxApkSizeMB": 2048,
+    "requiredSignatureSchemes": ["v2"],
+    "sensitivePermissionPolicy": {
+      "QUERY_ALL_PACKAGES": "high",
+      "READ_PHONE_STATE": "medium",
+      "SYSTEM_ALERT_WINDOW": "high",
+      "REQUEST_INSTALL_PACKAGES": "high"
+    },
+    "description": "通用基础规则：64 位、targetSdkVersion、Debug、HTTP、签名和敏感权限检测。"
+  },
+  {
+    "id": "google_play",
+    "channelName": "Google Play",
+    "name": "Google Play",
+    "logo": "GP",
+    "minTargetSdkVersion": 35,
+    "targetSdkMin": 35,
+    "requireArm64": true,
+    "allowPure32Bit": false,
+    "allowDebuggable": false,
+    "allowCleartextTraffic": false,
+    "strictHttp": true,
+    "maxApkSizeMB": 2048,
+    "requiredSignatureSchemes": ["v2", "v3"],
+    "sensitivePermissionPolicy": {
+      "QUERY_ALL_PACKAGES": "high",
+      "REQUEST_INSTALL_PACKAGES": "high",
+      "SCHEDULE_EXACT_ALARM": "medium"
+    },
+    "description": "Google Play 规则模板：targetSdkVersion 按当前规则配置为 35，重点关注 64 位、敏感权限和网络安全。"
+  },
+  {
+    "id": "domestic",
+    "channelName": "国内渠道",
+    "name": "国内渠道",
+    "logo": "CN",
+    "minTargetSdkVersion": 33,
+    "targetSdkMin": 33,
+    "requireArm64": true,
+    "allowPure32Bit": false,
+    "allowDebuggable": false,
+    "allowCleartextTraffic": false,
+    "strictHttp": true,
+    "maxApkSizeMB": 2048,
+    "requiredSignatureSchemes": ["v2"],
+    "sensitivePermissionPolicy": {
+      "QUERY_ALL_PACKAGES": "high",
+      "READ_PHONE_STATE": "medium",
+      "READ_EXTERNAL_STORAGE": "medium",
+      "WRITE_EXTERNAL_STORAGE": "medium",
+      "SYSTEM_ALERT_WINDOW": "high"
+    },
+    "description": "国内主流渠道通用模板：重点关注 targetSdkVersion、arm64-v8a、隐私权限、HTTP 明文和 Debug 包。"
+  },
+  {
+    "id": "xiaomi",
+    "channelName": "小米",
+    "name": "小米",
+    "logo": "MI",
+    "minTargetSdkVersion": 33,
+    "targetSdkMin": 33,
+    "requireArm64": true,
+    "allowPure32Bit": false,
+    "allowDebuggable": false,
+    "allowCleartextTraffic": false,
+    "strictHttp": true,
+    "maxApkSizeMB": 2048,
+    "requiredSignatureSchemes": ["v2"],
+    "sensitivePermissionPolicy": {
+      "QUERY_ALL_PACKAGES": "high",
+      "READ_PHONE_STATE": "medium",
+      "SYSTEM_ALERT_WINDOW": "high"
+    },
+    "description": "适用于小米开放平台提交前检查。"
+  },
+  {
+    "id": "huawei",
+    "channelName": "华为",
+    "name": "华为",
+    "logo": "HW",
+    "minTargetSdkVersion": 33,
+    "targetSdkMin": 33,
+    "requireArm64": true,
+    "allowPure32Bit": false,
+    "allowDebuggable": false,
+    "allowCleartextTraffic": false,
+    "strictHttp": true,
+    "maxApkSizeMB": 2048,
+    "requiredSignatureSchemes": ["v2"],
+    "sensitivePermissionPolicy": {
+      "QUERY_ALL_PACKAGES": "high",
+      "READ_PHONE_STATE": "medium",
+      "REQUEST_INSTALL_PACKAGES": "high"
+    },
+    "description": "适用于华为 AppGallery 提交前检查。"
+  },
+  {
+    "id": "oppo",
+    "channelName": "OPPO",
+    "name": "OPPO",
+    "logo": "OP",
+    "minTargetSdkVersion": 33,
+    "targetSdkMin": 33,
+    "requireArm64": true,
+    "allowPure32Bit": false,
+    "allowDebuggable": false,
+    "allowCleartextTraffic": false,
+    "strictHttp": true,
+    "maxApkSizeMB": 2048,
+    "requiredSignatureSchemes": ["v2"],
+    "sensitivePermissionPolicy": {
+      "QUERY_ALL_PACKAGES": "high",
+      "READ_PHONE_STATE": "medium"
+    },
+    "description": "适用于 OPPO 软件商店提交前检查。"
+  },
+  {
+    "id": "vivo",
+    "channelName": "vivo",
+    "name": "vivo",
+    "logo": "VV",
+    "minTargetSdkVersion": 33,
+    "targetSdkMin": 33,
+    "requireArm64": true,
+    "allowPure32Bit": false,
+    "allowDebuggable": false,
+    "allowCleartextTraffic": false,
+    "strictHttp": true,
+    "maxApkSizeMB": 2048,
+    "requiredSignatureSchemes": ["v2"],
+    "sensitivePermissionPolicy": {
+      "QUERY_ALL_PACKAGES": "high",
+      "READ_PHONE_STATE": "medium"
+    },
+    "description": "适用于 vivo 应用商店提交前检查。"
+  },
+  {
+    "id": "honor",
+    "channelName": "荣耀",
+    "name": "荣耀",
+    "logo": "HN",
+    "minTargetSdkVersion": 33,
+    "targetSdkMin": 33,
+    "requireArm64": true,
+    "allowPure32Bit": false,
+    "allowDebuggable": false,
+    "allowCleartextTraffic": false,
+    "strictHttp": true,
+    "maxApkSizeMB": 2048,
+    "requiredSignatureSchemes": ["v2"],
+    "sensitivePermissionPolicy": {
+      "QUERY_ALL_PACKAGES": "high",
+      "READ_PHONE_STATE": "medium"
+    },
+    "description": "适用于荣耀应用市场提交前检查。"
+  },
+  {
+    "id": "taptap",
+    "channelName": "TapTap",
+    "name": "TapTap",
+    "logo": "TT",
+    "minTargetSdkVersion": 33,
+    "targetSdkMin": 33,
+    "requireArm64": true,
+    "allowPure32Bit": false,
+    "allowDebuggable": false,
+    "allowCleartextTraffic": true,
+    "strictHttp": false,
+    "maxApkSizeMB": 2048,
+    "requiredSignatureSchemes": ["v2"],
+    "sensitivePermissionPolicy": {
+      "QUERY_ALL_PACKAGES": "high",
+      "READ_PHONE_STATE": "medium"
+    },
+    "description": "适用于 TapTap 提交前检查。"
+  },
+  {
+    "id": "yingyongbao",
+    "channelName": "应用宝",
+    "name": "应用宝",
+    "logo": "YYB",
+    "minTargetSdkVersion": 33,
+    "targetSdkMin": 33,
+    "requireArm64": true,
+    "allowPure32Bit": false,
+    "allowDebuggable": false,
+    "allowCleartextTraffic": false,
+    "strictHttp": true,
+    "maxApkSizeMB": 2048,
+    "requiredSignatureSchemes": ["v2"],
+    "sensitivePermissionPolicy": {
+      "QUERY_ALL_PACKAGES": "high",
+      "READ_PHONE_STATE": "medium",
+      "SYSTEM_ALERT_WINDOW": "high"
+    },
+    "description": "适用于应用宝提交前检查。"
+  },
+  {
+    "id": "bilibili",
+    "channelName": "B站",
+    "name": "B站",
+    "logo": "B",
+    "minTargetSdkVersion": 33,
+    "targetSdkMin": 33,
+    "requireArm64": true,
+    "allowPure32Bit": false,
+    "allowDebuggable": false,
+    "allowCleartextTraffic": true,
+    "strictHttp": false,
+    "maxApkSizeMB": 2048,
+    "requiredSignatureSchemes": ["v2"],
+    "sensitivePermissionPolicy": {
+      "QUERY_ALL_PACKAGES": "high",
+      "READ_PHONE_STATE": "medium"
+    },
+    "description": "适用于 B站游戏渠道提交前检查。"
+  }
+]

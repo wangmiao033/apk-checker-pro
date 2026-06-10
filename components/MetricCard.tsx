@@ -8,7 +8,7 @@ export function MetricCard({ label, value, detail, tone = 'slate' }: { label: st
   }
 
   return (
-    <div className={`relative overflow-hidden rounded-xl border p-4 shadow-sm before:absolute before:left-0 before:top-0 before:h-full before:w-1 ${toneMap[tone]}`}>
+    <div className={`relative min-h-[118px] overflow-visible rounded-xl border p-4 shadow-sm before:absolute before:left-0 before:top-0 before:h-full before:w-1 ${toneMap[tone]}`}>
       <div className="text-xs font-semibold text-slate-500">{label}</div>
       <div className="mt-2 text-2xl font-bold tracking-tight">{value}</div>
       <div className="mt-1 text-xs leading-5 text-slate-500">{detail}</div>

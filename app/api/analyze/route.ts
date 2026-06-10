@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
     const form = await req.formData()
     const file = form.get('file') as File | null
     const channelsRaw = form.get('channels') as string | null
+    const channelRulesRaw = form.get('channelRules') as string | null
 
     if (!file) return NextResponse.json({ error: '未收到 APK 文件' }, { status: 400 })
     if (!file.name.toLowerCase().endsWith('.apk')) return NextResponse.json({ error: '请上传 .apk 文件' }, { status: 400 })
@@ -40,7 +41,19 @@ export async function POST(req: NextRequest) {
       selectedChannels = undefined
     }
 
-    return NextResponse.json(analyzeApk(tempPath, selectedChannels))
+    let selectedRules: any[] | undefined
+    try {
+      const parsed = channelRulesRaw ? JSON.parse(channelRulesRaw) : undefined
+      selectedRules = Array.isArray(parsed) ? parsed : undefined
+    } catch {
+      selectedRules = undefined
+    }
+
+    return NextResponse.json(analyzeApk(tempPath, selectedChannels, selectedRules, {
+      originalFileName: file.name,
+      storedFileName: path.basename(tempPath),
+      mimeType: file.type || '未提供'
+    }))
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || '检测失败' }, { status: 500 })
   } finally {

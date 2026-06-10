@@ -6,6 +6,8 @@ export type DetectionMode = 'full' | 'degraded' | 'unavailable'
 export type LogStatus = 'success' | 'failed' | 'skipped'
 export type HardCheckStatus = 'pass' | 'blocker' | 'warning' | 'unknown'
 export type PrivacyCheckStatus = 'found' | 'warning' | 'high_risk' | 'unknown'
+export type StandardDetectionStatus = 'pass' | 'fail' | 'warning' | 'unknown' | 'unsupported' | 'parse_failed' | 'error'
+export type StandardSeverity = 'critical' | 'high' | 'medium' | 'low' | 'info'
 
 export type ApkHash = {
   md5: string
@@ -14,10 +16,11 @@ export type ApkHash = {
 }
 
 export type DetectionLogItem = {
-  key: 'zip' | 'manifest' | 'abi' | 'signature' | 'http'
+  key: 'upload' | 'zip' | 'manifest' | 'abi' | 'signature' | 'http' | 'scoring'
   label: string
   status: LogStatus
   message: string
+  detail?: Record<string, unknown>
 }
 
 export type ToolHealth = {
@@ -47,12 +50,59 @@ export type ApkInfo = {
   fileSizeBytes: number
   packageName: string | null
   appName: string | null
+  appLabel?: string | null
   versionCode: string | null
   versionName: string | null
   minSdkVersion: number | null
   targetSdkVersion: number | null
+  compileSdkVersion?: number | null
   hasSignature: boolean | null
   parseSuccess: boolean
+}
+
+export type AbiDetail = {
+  abi: AbiName
+  exists: boolean | null
+  soCount: number
+  sampleSoFiles: string[]
+}
+
+export type SignatureInfo = {
+  status: 'signed' | 'unsigned' | 'unsupported' | 'unknown'
+  isDebugSignature: boolean | null
+  schemes: {
+    v1: boolean | null
+    v2: boolean | null
+    v3: boolean | null
+    v4: boolean | null
+  }
+  certificateSha1: string | null
+  certificateSha256: string | null
+  validFrom: string | null
+  validTo: string | null
+  rawSummary: string | null
+}
+
+export type IconInfo = {
+  hasAppIcon: boolean | null
+  hasRoundIcon: boolean | null
+  hasAdaptiveIcon: boolean | null
+  hasDefaultIconRisk: boolean | null
+  densities: Record<string, boolean>
+}
+
+export type SizeAnalysis = {
+  totalSizeBytes: number
+  totalSize: string
+  assetsSizeBytes: number
+  libSizeBytes: number
+  dexSizeBytes: number
+  resSizeBytes: number
+  topFiles: Array<{
+    path: string
+    sizeBytes: number
+    size: string
+  }>
 }
 
 export type RiskLevel = 'blocker' | 'high' | 'medium' | 'low' | 'info'
@@ -110,12 +160,43 @@ export type AnalyzerChecks = {
   hasArm64: boolean | null
   targetSdkOk: boolean | null
   isPure32Bit: boolean | null
+  isOnly64Bit?: boolean | null
+  hasArmv7?: boolean | null
   hasHttp: boolean | null
+  usesCleartextTraffic?: boolean | null
+  cleartextMode?: 'global' | 'domain' | 'none' | 'unknown'
   hasDebugRisk: boolean | null
+  debuggable?: boolean | null
   hasSensitivePermissions: boolean | null
   hasSignature: boolean | null
   hasCleartextRisk: boolean | null
   hasAllowBackupRisk: boolean | null
+}
+
+export type StandardDetectionItem = {
+  id: string
+  category: string
+  title: string
+  status: StandardDetectionStatus
+  severity: StandardSeverity
+  currentValue: string
+  expectedValue: string
+  evidence: string
+  risk: string
+  suggestion: string
+  devInstruction: string
+  scoreImpact?: number
+  includedInScore?: boolean
+}
+
+export type ScoreBreakdownItem = {
+  id: string
+  title: string
+  status: StandardDetectionStatus
+  severity: StandardSeverity
+  deduction: number
+  reason: string
+  includedInScore: boolean
 }
 
 export type AnalyzeResult = {
@@ -135,12 +216,26 @@ export type AnalyzeResult = {
   engine: EngineHealth
   detectionLogs: DetectionLogItem[]
   apkInfo: ApkInfo
+  currentChannelRules?: Array<{
+    id: string
+    name: string
+    targetSdkMin: number
+    requireArm64: boolean
+    allowDebuggable: boolean
+    allowCleartextTraffic: boolean
+  }>
   abiInfo: AbiInfo
+  abiDetails?: AbiDetail[]
+  signatureInfo?: SignatureInfo
+  iconInfo?: IconInfo
+  sizeAnalysis?: SizeAnalysis
   checks: AnalyzerChecks
   permissions: string[]
   sensitivePermissions: string[]
   httpUrls: string[]
   debugKeywords: string[]
+  detectionItems?: StandardDetectionItem[]
+  scoreBreakdown?: ScoreBreakdownItem[]
   risks: RiskItem[]
   hardChecks: HardCheckItem[]
   privacyChecks: PrivacyCheckItem[]

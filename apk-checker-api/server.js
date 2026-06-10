@@ -91,10 +91,20 @@ app.post('/api/analyze', upload.single('file'), (req, res) => {
     } catch {
       selectedChannels = undefined
     }
+    let channelRules
+    try {
+      const parsed = req.body.channelRules ? JSON.parse(req.body.channelRules) : undefined
+      channelRules = Array.isArray(parsed) ? parsed : undefined
+    } catch {
+      channelRules = undefined
+    }
 
     const result = analyzeApk(filePath, {
       originalName: req.file.originalname,
-      selectedChannelIds: selectedChannels
+      storedFileName: req.file.filename,
+      mimeType: req.file.mimetype,
+      selectedChannelIds: selectedChannels,
+      channelRules
     })
     return res.json(result)
   } catch (error) {
