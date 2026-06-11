@@ -1,4 +1,4 @@
-# APKFlow - APK Channel Precheck Platform
+﻿# APKFlow - APK Channel Precheck Platform
 
 APKFlow is a frontend PWA plus standalone APK static analysis backend.
 
@@ -96,7 +96,7 @@ Runtime behavior:
 
 - Node.js Express server
 - `multer` receives APK uploads
-- max upload size: 500MB
+- max upload size: 2048MB
 - APK is saved to a temporary directory
 - static commands are called: `unzip`, `aapt`, `apksigner`, `strings`
 - JSON report is returned
@@ -178,7 +178,7 @@ Browser
 
 Deploy the backend to a VM, cloud server, container service, or Kubernetes cluster that supports:
 
-- 500MB request bodies
+- 2048MB request bodies
 - local temporary file writes
 - system command execution
 - Android build tools
@@ -186,7 +186,7 @@ Deploy the backend to a VM, cloud server, container service, or Kubernetes clust
 If Nginx or another gateway is in front of the API, configure upload size:
 
 ```nginx
-client_max_body_size 500m;
+client_max_body_size 2048m;
 ```
 
 Then set the Vercel frontend environment variable:

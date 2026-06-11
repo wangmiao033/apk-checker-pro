@@ -1,4 +1,4 @@
-# 部署说明
+﻿# 部署说明
 
 ## 推荐环境
 
@@ -41,7 +41,7 @@ server {
     listen 80;
     server_name apk-checker.yourdomain.com;
 
-    client_max_body_size 300m;
+    client_max_body_size 2048m;
 
     location / {
         proxy_pass http://127.0.0.1:3000;

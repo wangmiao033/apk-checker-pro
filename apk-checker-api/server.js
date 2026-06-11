@@ -10,7 +10,8 @@ const pkg = require('./package.json')
 
 const app = express()
 const port = Number(process.env.PORT || 8080)
-const maxSize = 500 * 1024 * 1024
+const maxUploadMB = Number(process.env.MAX_UPLOAD_MB || 2048)
+const maxSize = maxUploadMB * 1024 * 1024
 const tmpRoot = process.env.APK_TMP_DIR || path.join(os.tmpdir(), 'apk-checker-api')
 const allowedOrigins = (process.env.CORS_ORIGIN || 'https://apk.hnchpower.cn,https://apk-checker-pro.vercel.app')
   .split(',')
@@ -62,7 +63,7 @@ function health(_req, res) {
   res.json({
     service: 'apk-checker-api',
     version: pkg.version,
-    maxUploadMB: 500,
+    maxUploadMB,
     ...getEngineHealth()
   })
 }
@@ -116,11 +117,14 @@ app.post('/api/analyze', upload.single('file'), (req, res) => {
 
 app.use((error, _req, res, _next) => {
   if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({ error: 'File exceeds 500MB limit' })
+    return res.status(413).json({ error: `File exceeds ${maxUploadMB}MB limit` })
   }
   return res.status(400).json({ error: error.message || 'Bad request' })
 })
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`apk-checker-api listening on :${port}`)
 })
+
+server.requestTimeout = 60 * 60 * 1000
+server.headersTimeout = 65 * 60 * 1000

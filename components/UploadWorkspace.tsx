@@ -89,9 +89,11 @@ function healthApiUrl() {
 }
 
 const MB = 1024 * 1024
+const BACKEND_UPLOAD_LIMIT_MB = 2048
+const DEMO_UPLOAD_LIMIT_MB = 4
 
 function maxUploadMB() {
-  return process.env.NEXT_PUBLIC_ANALYZE_API_URL ? 500 : 4
+  return process.env.NEXT_PUBLIC_ANALYZE_API_URL ? BACKEND_UPLOAD_LIMIT_MB : DEMO_UPLOAD_LIMIT_MB
 }
 
 function engineText(mode: EngineMode) {
@@ -215,7 +217,7 @@ function postAnalyze(form: FormData, onProgress: (progress: number) => void) {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', apiUrl)
     xhr.responseType = 'text'
-    xhr.timeout = 15 * 60 * 1000
+    xhr.timeout = 60 * 60 * 1000
 
     xhr.upload.onprogress = event => {
       if (!event.lengthComputable) return
@@ -239,7 +241,7 @@ function postAnalyze(form: FormData, onProgress: (progress: number) => void) {
 
       if (xhr.status === 413) {
         reject(new Error(process.env.NEXT_PUBLIC_ANALYZE_API_URL
-          ? 'APK 文件超过检测后端上传限制，请检查后端 500MB 限制和网关 body size 配置。'
+          ? `APK 文件超过检测后端上传限制，请检查后端 ${BACKEND_UPLOAD_LIMIT_MB}MB 限制和网关 body size 配置。`
           : '当前请求仍在使用 Vercel 演示接口，最大只支持 4MB。请配置 NEXT_PUBLIC_ANALYZE_API_URL 指向独立检测后端。'))
         return
       }
@@ -1011,7 +1013,7 @@ export function UploadWorkspace() {
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-5">
               <h3 className="font-semibold text-slate-950">上传限制</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-500">{process.env.NEXT_PUBLIC_ANALYZE_API_URL ? '独立检测后端默认限制 500MB。' : '当前 Vercel 演示环境最大支持 4MB。'}</p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{process.env.NEXT_PUBLIC_ANALYZE_API_URL ? `独立检测后端默认限制 ${BACKEND_UPLOAD_LIMIT_MB}MB，覆盖常见 10MB 到 1.5GB 游戏包。` : '当前 Vercel 演示环境最大支持 4MB。'}</p>
             </div>
             <div className="rounded-lg border border-slate-200 bg-white p-5">
               <h3 className="font-semibold text-slate-950">检测引擎</h3>

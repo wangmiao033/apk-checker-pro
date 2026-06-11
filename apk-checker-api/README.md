@@ -1,4 +1,4 @@
-# apk-checker-api
+﻿# apk-checker-api
 
 Standalone APK static analysis backend for APKFlow.
 
@@ -10,7 +10,7 @@ Standalone APK static analysis backend for APKFlow.
 
 `POST /api/analyze` accepts `multipart/form-data`:
 
-- `file`: `.apk`, required, max 500MB
+- `file`: `.apk`, required, max 2048MB
 - `channels`: optional JSON string array
 
 ## Runtime Requirements
@@ -50,7 +50,7 @@ docker run --rm -p 8080:8080 \
 
 Deploy this API to a VM, container host, or other server that supports:
 
-- 500MB uploads
+- 2048MB uploads
 - local temporary files
 - system commands
 - Android build tools
