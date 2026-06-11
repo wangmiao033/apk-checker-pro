@@ -395,6 +395,25 @@ function SdkChecklist({
 }
 
 function buildIssueGroups(result: any): IssueGroup[] {
+  const identification = result.fileIdentification || result.apkInfo || {}
+  const fileIdentificationIssue: ReportIssue = {
+    id: 'file-identification',
+    status: identification.detectedFileType === 'apk' || result.detectedFileType === 'apk' ? 'pass' : 'parse_error',
+    title: '文件识别',
+    currentValue: [
+      `原始文件名：${display(identification.originalFileName || result.originalFileName || result.apkInfo?.originalFileName || result.apkInfo?.fileName)}`,
+      `系统识别类型：${display(identification.detectedFileType || result.detectedFileType || result.apkInfo?.detectedFileType || 'apk')}`,
+      `是否自动修正：${(identification.isNormalized ?? result.isNormalized ?? result.apkInfo?.isNormalized) ? '是，已自动规范化' : '否，标准 APK 文件名'}`,
+      `修正后文件名：${display(identification.normalizedFileName || result.normalizedFileName || result.apkInfo?.normalizedFileName || result.apkInfo?.fileName)}`,
+      `识别依据：${(identification.identificationEvidence || result.apkInfo?.identificationEvidence || []).join('；') || '检测到 APK 结构'}`
+    ].join('\n'),
+    expectedValue: '根据文件内容识别 APK，不直接信任用户上传文件名或后缀',
+    impact: (identification.isNormalized ?? result.isNormalized ?? result.apkInfo?.isNormalized)
+      ? '系统已识别该文件内容为 APK，并自动按 APK 包处理，无需手动改名。'
+      : '文件内容已识别为 APK，继续进入静态检测流程。',
+    suggestion: '无需修改本地文件名；如识别失败，请确认文件是否完整、是否被下载工具损坏。'
+  }
+
   if (Array.isArray(result.detectionItems) && result.detectionItems.length > 0) {
     const groupDefs = [
       { id: 'basic', title: 'APK 基础信息', description: '包名、应用名、版本、Hash、Manifest 解析状态。', categories: ['basic'] },
@@ -436,10 +455,13 @@ function buildIssueGroups(result: any): IssueGroup[] {
       .map(def => {
         const issues: ReportIssue[] = def.id === 'developer'
           ? [developerIssue]
-          : items.filter((issue: ReportIssue) => {
+          : [
+              ...(def.id === 'basic' ? [fileIdentificationIssue] : []),
+              ...items.filter((issue: ReportIssue) => {
             const source = result.detectionItems.find((item: any) => item.id === issue.id)
             return source && def.categories.includes(source.category)
           })
+            ]
         return {
           id: def.id,
           title: def.title,
@@ -603,7 +625,7 @@ function buildIssueGroups(result: any): IssueGroup[] {
       id: 'basic',
       title: 'APK 基础信息',
       description: '包名、版本、文件大小、Manifest 解析状态。',
-      issues: [basicIssue],
+      issues: [fileIdentificationIssue, basicIssue],
       defaultOpen: parseError
     },
     {

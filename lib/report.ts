@@ -325,6 +325,14 @@ export function buildMarkdownReport(result: Omit<AnalyzeResult, 'htmlReport' | '
     `- 检测时间：${result.reportMeta.detectedAt}`,
     `- 规则版本：${result.reportMeta.ruleVersion}`,
     '',
+    '## 文件识别',
+    '',
+    `- 原始文件名：${display(result.fileIdentification?.originalFileName || result.originalFileName || result.apkInfo.originalFileName || result.apkInfo.fileName)}`,
+    `- 系统识别类型：${display(result.fileIdentification?.detectedFileType || result.detectedFileType || result.apkInfo.detectedFileType || 'apk')}`,
+    `- 是否自动修正：${result.fileIdentification?.isNormalized || result.isNormalized || result.apkInfo.isNormalized ? '是，已自动规范化' : '否，标准 APK 文件名'}`,
+    `- 修正后文件名：${display(result.fileIdentification?.normalizedFileName || result.normalizedFileName || result.apkInfo.normalizedFileName || result.apkInfo.fileName)}`,
+    `- 文件识别依据：${(result.fileIdentification?.identificationEvidence || result.apkInfo.identificationEvidence || []).join('；') || '检测到 APK 结构'}`,
+    '',
     '## APK 基础信息',
     '',
     `- 应用名：${display(result.apkInfo.appName)}`,
@@ -370,6 +378,10 @@ export function buildHtmlReport(result: Omit<AnalyzeResult, 'htmlReport'>): stri
       ? (result.sdkFindings || []).map(item => `<tr><td>${esc(item.categoryLabel)}</td><td>${esc(item.name)}</td><td>${esc(item.evidence.join('、'))}</td><td>${esc(item.disclosureNote)}</td><td>${esc(item.suggestion)}</td></tr>`).join('')
       : '<tr><td colspan="5">未命中本轮广告、支付、推送、统计、OAID 重点 SDK 关键词。该结论仅代表静态识别结果，混淆或动态加载可能导致遗漏。</td></tr>'
     const channelRuleRows = (result.currentChannelRules || []).map(rule => `<tr><td>${esc(rule.name)}</td><td>${esc(rule.targetSdkMin)}</td><td>${rule.requireArm64 ? '是' : '否'}</td><td>${rule.allowDebuggable ? '允许' : '不允许'}</td><td>${rule.allowCleartextTraffic ? '允许' : '不允许'}</td></tr>`).join('')
+    const identification = result.fileIdentification || result.apkInfo || {}
+    const identificationRows = `<tr><th>原始文件名</th><td>${esc(display(identification.originalFileName || result.originalFileName || result.apkInfo.originalFileName || result.apkInfo.fileName))}</td><th>系统识别类型</th><td>${esc(display(identification.detectedFileType || result.detectedFileType || result.apkInfo.detectedFileType || 'apk'))}</td></tr>
+    <tr><th>是否自动修正</th><td>${identification.isNormalized || result.isNormalized || result.apkInfo.isNormalized ? '是，已自动规范化' : '否，标准 APK 文件名'}</td><th>修正后文件名</th><td>${esc(display(identification.normalizedFileName || result.normalizedFileName || result.apkInfo.normalizedFileName || result.apkInfo.fileName))}</td></tr>
+    <tr><th>文件识别依据</th><td colspan="3">${esc((identification.identificationEvidence || result.apkInfo.identificationEvidence || []).join('；') || '检测到 APK 结构')}</td></tr>`
 
     return `<!doctype html>
 <html lang="zh-CN">
@@ -429,6 +441,11 @@ pre{margin:0;white-space:pre-wrap;font-family:inherit;line-height:1.7}
 <section class="section">
   <div class="section-title">测试报告概述</div>
   <table class="summary-table"><tr><th>统计项</th>${summaryHead}</tr><tr><td>数量</td>${summaryCounts}</tr><tr><td>占比</td>${summaryRatios}</tr></table>
+</section>
+
+<section class="section">
+  <div class="section-title">文件识别</div>
+  <table>${identificationRows}</table>
 </section>
 
 <section class="section">

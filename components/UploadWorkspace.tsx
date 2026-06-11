@@ -91,6 +91,7 @@ function healthApiUrl() {
 const MB = 1024 * 1024
 const BACKEND_UPLOAD_LIMIT_MB = 2048
 const DEMO_UPLOAD_LIMIT_MB = 4
+const UPLOAD_ACCEPT = '.apk,.apk.1,.apk.txt,application/vnd.android.package-archive,application/zip,*/*'
 
 function maxUploadMB() {
   return process.env.NEXT_PUBLIC_ANALYZE_API_URL ? BACKEND_UPLOAD_LIMIT_MB : DEMO_UPLOAD_LIMIT_MB
@@ -383,10 +384,6 @@ export function UploadWorkspace() {
   function chooseFile(nextFile: File | null) {
     setError('')
     if (!nextFile) return
-    if (!nextFile.name.toLowerCase().endsWith('.apk')) {
-      setError('只允许上传 .apk 文件')
-      return
-    }
     const limitMB = maxUploadMB()
     if (nextFile.size > limitMB * MB) {
       setError(`文件大小为 ${formatBytes(nextFile.size)}，超过当前环境 ${limitMB}MB 上传限制。`)
@@ -466,6 +463,8 @@ export function UploadWorkspace() {
       const displayTime = uploadTime || result?.generatedAt || result?.reportMeta?.detectedAt || '未记录'
       const canAnalyze = Boolean(file)
       const apkInfo = result?.apkInfo || {}
+      const fileIdentification = result?.fileIdentification || apkInfo
+      const normalizedNotice = Boolean(fileIdentification?.isNormalized || result?.isNormalized)
 
       return (
         <div className="rounded-lg border border-slate-200 bg-white p-3">
@@ -481,6 +480,10 @@ export function UploadWorkspace() {
                 <span>上传时间：{displayTime}</span>
                 <span>检测状态：{loading ? '检测中' : statusText(result?.status)}</span>
                 <span>包名：{display(apkInfo.packageName)}</span>
+                <span>原始文件名：{display(fileIdentification?.originalFileName || result?.originalFileName || displayName)}</span>
+                <span>识别类型：{display(fileIdentification?.detectedFileType || result?.detectedFileType || (result ? 'apk' : '待检测'))}</span>
+                <span>文件名修正：{result ? normalizedNotice ? '已自动规范化' : '无需修正' : '待检测'}</span>
+                <span>修正后文件名：{display(fileIdentification?.normalizedFileName || result?.normalizedFileName || apkInfo.fileName)}</span>
                 <span>应用名：{display(apkInfo.appLabel || apkInfo.appName)}</span>
                 <span>版本：{display(apkInfo.versionName)} / {display(apkInfo.versionCode)}</span>
                 <span>minSdkVersion：{display(apkInfo.minSdkVersion)}</span>
@@ -488,6 +491,11 @@ export function UploadWorkspace() {
                 <span>检测模式：{result?.reportMeta?.detectionMode ? engineText(result.reportMeta.detectionMode) : healthChecked ? engineText(engineMode) : '状态检查中'}</span>
                 <span className="min-w-0 truncate lg:col-span-3">APK SHA256：{display(result?.apkHash?.sha256)}</span>
               </div>
+              {normalizedNotice && (
+                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold leading-5 text-emerald-700">
+                  系统已识别该文件内容为 APK，并自动按 APK 包处理，无需手动改名。
+                </div>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" className="btn-secondary btn-sm" onClick={() => inputRef.current?.click()}>重新上传</button>
@@ -503,7 +511,7 @@ export function UploadWorkspace() {
               </div>
             </div>
           )}
-          <input ref={inputRef} type="file" accept=".apk" className="hidden" onChange={event => chooseFile(event.target.files?.[0] || null)} />
+          <input ref={inputRef} type="file" accept={UPLOAD_ACCEPT} className="hidden" onChange={event => chooseFile(event.target.files?.[0] || null)} />
         </div>
       )
     }
@@ -519,12 +527,11 @@ export function UploadWorkspace() {
           dragging ? 'border-blue-400 bg-blue-50' : 'border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-white'
         )}
       >
-        <input ref={inputRef} type="file" accept=".apk" className="hidden" onChange={event => chooseFile(event.target.files?.[0] || null)} />
+        <input ref={inputRef} type="file" accept={UPLOAD_ACCEPT} className="hidden" onChange={event => chooseFile(event.target.files?.[0] || null)} />
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-slate-900 text-sm font-semibold text-white">APK</div>
         <div className="mt-5 text-base font-semibold text-slate-950">点击或拖拽 APK 到这里</div>
-        <div className="mt-2 text-sm text-slate-500">
-          最大支持 {maxUploadMB()}MB
-        </div>
+        <div className="mt-2 text-sm text-slate-500">最大支持 {maxUploadMB()}MB</div>
+        <div className="mt-1 text-xs text-slate-500">支持 .apk / .apk.1 / .apk.txt / 无后缀 APK 文件自动识别</div>
         {loading && (
           <div className="mx-auto mt-6 max-w-md">
             <div className="flex justify-between text-xs font-semibold text-slate-500"><span>上传与检测中</span><span>{uploadProgress}%</span></div>

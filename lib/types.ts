@@ -15,6 +15,19 @@ export type ApkHash = {
   sha256: string
 }
 
+export type FileIdentification = {
+  originalFileName: string
+  normalizedFileName: string
+  detectedFileType: 'apk'
+  isApkLike: boolean
+  isNormalized: boolean
+  normalizeReason: string
+  identificationEvidence: string[]
+  confidence?: number
+  entryCount?: number
+  totalUncompressedSize?: number
+}
+
 export type DetectionLogItem = {
   key: 'upload' | 'zip' | 'manifest' | 'abi' | 'signature' | 'http' | 'scoring'
   label: string
@@ -46,6 +59,13 @@ export type ReportMeta = {
 
 export type ApkInfo = {
   fileName: string
+  originalFileName?: string
+  normalizedFileName?: string
+  detectedFileType?: string
+  isApkLike?: boolean
+  isNormalized?: boolean
+  normalizeReason?: string
+  identificationEvidence?: string[]
   fileSize: string
   fileSizeBytes: number
   packageName: string | null
@@ -241,6 +261,13 @@ export type AnalyzeResult = {
   generatedAt: string
   reportMeta: ReportMeta
   apkHash: ApkHash
+  fileIdentification?: FileIdentification
+  originalFileName?: string
+  normalizedFileName?: string
+  detectedFileType?: 'apk'
+  isApkLike?: boolean
+  isNormalized?: boolean
+  normalizeReason?: string
   engine: EngineHealth
   detectionLogs: DetectionLogItem[]
   apkInfo: ApkInfo

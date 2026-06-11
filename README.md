@@ -97,6 +97,8 @@ Runtime behavior:
 - Node.js Express server
 - `multer` receives APK uploads
 - max upload size: 2048MB
+- uploads are detected by file content, not only by filename suffix
+- abnormal names such as `.apk.1`, `.apk.txt`, `.apk(1)`, `.apk_1`, and no-suffix APK files are automatically normalized on the server
 - APK is saved to a temporary directory
 - static commands are called: `unzip`, `aapt`, `apksigner`, `strings`
 - JSON report is returned
@@ -123,7 +125,9 @@ Privacy risk checks:
 
 Security boundary:
 
-- only `.apk` filenames are accepted
+- only files whose content is detected as APK are accepted
+- uploaded filenames are sanitized and never trusted as paths
+- APK identity is confirmed by ZIP magic and APK directory evidence such as `AndroidManifest.xml`
 - command execution uses argument arrays, not shell string concatenation
 - temporary files are cleaned in `finally`
 - CORS allows `https://apk.hnchpower.cn` by default

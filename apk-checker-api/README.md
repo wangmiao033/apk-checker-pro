@@ -10,7 +10,7 @@ Standalone APK static analysis backend for APKFlow.
 
 `POST /api/analyze` accepts `multipart/form-data`:
 
-- `file`: `.apk`, required, max 2048MB
+- `file`: APK content, required, max 2048MB. Filename may be `.apk`, `.apk.1`, `.apk.txt`, or no suffix.
 - `channels`: optional JSON string array
 
 ## Runtime Requirements
@@ -51,6 +51,8 @@ docker run --rm -p 8080:8080 \
 Deploy this API to a VM, container host, or other server that supports:
 
 - 2048MB uploads
+- content-based APK detection using ZIP magic and `AndroidManifest.xml`
+- automatic server-side filename normalization for abnormal APK suffixes
 - local temporary files
 - system commands
 - Android build tools

@@ -1070,6 +1070,14 @@ function buildMarkdownReport(result) {
     `- 检测时间：${result.reportMeta.detectedAt}`,
     `- 规则版本：${result.reportMeta.ruleVersion}`,
     '',
+    '## 文件识别',
+    '',
+    `- 原始文件名：${display((result.fileIdentification && result.fileIdentification.originalFileName) || result.originalFileName || result.apkInfo.originalFileName || result.apkInfo.fileName)}`,
+    `- 系统识别类型：${display((result.fileIdentification && result.fileIdentification.detectedFileType) || result.detectedFileType || result.apkInfo.detectedFileType || 'apk')}`,
+    `- 是否自动修正：${(result.fileIdentification && result.fileIdentification.isNormalized) || result.isNormalized || result.apkInfo.isNormalized ? '是，已自动规范化' : '否，标准 APK 文件名'}`,
+    `- 修正后文件名：${display((result.fileIdentification && result.fileIdentification.normalizedFileName) || result.normalizedFileName || result.apkInfo.normalizedFileName || result.apkInfo.fileName)}`,
+    `- 文件识别依据：${(((result.fileIdentification && result.fileIdentification.identificationEvidence) || result.apkInfo.identificationEvidence || []).join('；')) || '检测到 APK 结构'}`,
+    '',
     '## APK 基础信息',
     '',
     `- 应用名：${display(result.apkInfo.appName)}`,
@@ -1109,6 +1117,10 @@ function buildHtmlReport(result) {
   const topFiles = result.sizeAnalysis && Array.isArray(result.sizeAnalysis.topFiles)
     ? result.sizeAnalysis.topFiles.map(file => `<tr><td>${esc(file.path)}</td><td>${esc(file.size)}</td></tr>`).join('')
     : ''
+  const identification = result.fileIdentification || result.apkInfo || {}
+  const identificationRows = `<tr><th>原始文件名</th><td>${esc(display(identification.originalFileName || result.originalFileName || result.apkInfo.originalFileName || result.apkInfo.fileName))}</td><th>系统识别类型</th><td>${esc(display(identification.detectedFileType || result.detectedFileType || result.apkInfo.detectedFileType || 'apk'))}</td></tr>
+<tr><th>是否自动修正</th><td>${identification.isNormalized || result.isNormalized || result.apkInfo.isNormalized ? '是，已自动规范化' : '否，标准 APK 文件名'}</td><th>修正后文件名</th><td>${esc(display(identification.normalizedFileName || result.normalizedFileName || result.apkInfo.normalizedFileName || result.apkInfo.fileName))}</td></tr>
+<tr><th>文件识别依据</th><td colspan="3">${esc(((identification.identificationEvidence || result.apkInfo.identificationEvidence || []).join('；')) || '检测到 APK 结构')}</td></tr>`
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -1164,6 +1176,7 @@ pre{margin:0;white-space:pre-wrap;font-family:inherit;line-height:1.7}
   <p class="muted">说明：辅助评分仅用于内部参考，不替代渠道审核结论。</p>
 </section>
 <section class="section"><div class="section-title">测试报告概述</div><table class="summary-table"><tr><th>统计项</th>${summaryHead}</tr><tr><td>数量</td>${summaryCounts}</tr><tr><td>占比</td>${summaryRatios}</tr></table></section>
+<section class="section"><div class="section-title">文件识别</div><table>${identificationRows}</table></section>
 <section class="section"><div class="section-title">APK 基础信息</div><table>
 <tr><th>文件名</th><td>${esc(result.apkInfo.fileName)}</td><th>文件大小</th><td>${esc(result.apkInfo.fileSize)}</td></tr>
 <tr><th>应用名</th><td>${esc(display(result.apkInfo.appLabel || result.apkInfo.appName))}</td><th>包名</th><td>${esc(display(result.apkInfo.packageName))}</td></tr>
@@ -1186,7 +1199,8 @@ pre{margin:0;white-space:pre-wrap;font-family:inherit;line-height:1.7}
 
 function analyzeApk(filePath, options = {}) {
   const stat = fs.statSync(filePath)
-  const originalName = options.originalName || path.basename(filePath).replace(/^\d+-[a-f0-9]+-/, '')
+  const fileIdentification = options.uploadIdentification
+  const originalName = (fileIdentification && fileIdentification.normalizedFileName) || options.originalName || path.basename(filePath).replace(/^\d+-[a-f0-9]+-/, '')
   const engine = getEngineHealth()
   const generatedAt = new Date().toLocaleString('zh-CN', { hour12: false })
   const reportMeta = {
@@ -1216,7 +1230,7 @@ function analyzeApk(filePath, options = {}) {
   const httpScanOk = stringsOutput.ok || unzip.ok || xmltree.ok
 
   const detectionLogs = [
-    { key: 'upload', label: '上传阶段', status: 'success', message: 'APK 文件已保存到临时检测目录', detail: { originalFileName: originalName, storedFileName: options.storedFileName || path.basename(filePath), fileSize: stat.size, mimeType: options.mimeType || '未提供', sha256: apkHash.sha256 } },
+    { key: 'upload', label: '上传阶段', status: 'success', message: 'APK 文件已保存到临时检测目录', detail: { originalFileName: (fileIdentification && fileIdentification.originalFileName) || originalName, normalizedFileName: (fileIdentification && fileIdentification.normalizedFileName) || originalName, detectedFileType: (fileIdentification && fileIdentification.detectedFileType) || 'apk', isNormalized: Boolean(fileIdentification && fileIdentification.isNormalized), identificationEvidence: (fileIdentification && fileIdentification.identificationEvidence) || [], storedFileName: options.storedFileName || path.basename(filePath), fileSize: stat.size, mimeType: options.mimeType || '未提供', sha256: apkHash.sha256 } },
     logItem('zip', 'APK Zip 扫描', zipScanOk, 'Zip 结构读取成功', unzip.error || 'Zip 结构读取失败'),
     logItem('manifest', 'Manifest 解析', manifestOk, 'Manifest 基础信息解析成功', badging.error || 'Manifest 解析失败'),
     logItem('abi', 'ABI 扫描', abiScanOk, 'ABI 目录扫描成功', unzip.error || 'ABI 扫描失败'),
@@ -1288,10 +1302,24 @@ function analyzeApk(filePath, options = {}) {
     generatedAt,
     reportMeta,
     apkHash,
+    fileIdentification,
+    originalFileName: (fileIdentification && fileIdentification.originalFileName) || originalName,
+    normalizedFileName: (fileIdentification && fileIdentification.normalizedFileName) || originalName,
+    detectedFileType: (fileIdentification && fileIdentification.detectedFileType) || 'apk',
+    isApkLike: fileIdentification ? fileIdentification.isApkLike : true,
+    isNormalized: Boolean(fileIdentification && fileIdentification.isNormalized),
+    normalizeReason: (fileIdentification && fileIdentification.normalizeReason) || '文件内容识别为标准 APK',
     engine,
     detectionLogs,
     apkInfo: {
       fileName: originalName,
+      originalFileName: (fileIdentification && fileIdentification.originalFileName) || originalName,
+      normalizedFileName: (fileIdentification && fileIdentification.normalizedFileName) || originalName,
+      detectedFileType: (fileIdentification && fileIdentification.detectedFileType) || 'apk',
+      isApkLike: fileIdentification ? fileIdentification.isApkLike : true,
+      isNormalized: Boolean(fileIdentification && fileIdentification.isNormalized),
+      normalizeReason: (fileIdentification && fileIdentification.normalizeReason) || '文件内容识别为标准 APK',
+      identificationEvidence: (fileIdentification && fileIdentification.identificationEvidence) || [],
       fileSize: formatSize(stat.size),
       fileSizeBytes: stat.size,
       packageName,
