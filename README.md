@@ -91,6 +91,8 @@ It provides:
 - `GET /api/health`
 - `GET /health`
 - `GET /api/version`
+- `POST /api/test-release-files`
+- `GET /api/test-release-files/:fileId/:fileName`
 - `GET /api/test-releases`
 - `POST /api/test-releases`
 - `GET /api/test-releases/:id`
@@ -113,12 +115,14 @@ Runtime behavior:
 - temporary APK is deleted after analysis
 - APK code is not executed
 - APK is not installed
+- test release APK files are stored under `APK_DATA_DIR/test-release-files` by default
 - no emulator or device is used
 - parse failures return `parse_error`, not `failed`
 - parse failures show "评分不可用" and do not generate channel failure conclusions
 - health responses include the current engine mode, tool availability, upload limit, and backend version
 - hard checks return Chinese explanations, risk levels, current values, expected values, and remediation suggestions
 - test release records are persisted as JSON and can be configured with `APK_DATA_DIR` or `TEST_RELEASE_STORE_FILE`
+- test release file storage can be configured with `TEST_RELEASE_FILE_DIR`
 - test release download counts only cover clicks through `/api/test-releases/:id/download`
 
 Hard checks:

@@ -5,6 +5,7 @@ import { channelRules, type ChannelRule } from '@/lib/channelRules'
 import { ResultDashboard } from './ResultDashboard'
 import { CopyButton } from './CopyButton'
 import {
+  TEST_RELEASE_UPLOAD_ACCEPT,
   absoluteUrl,
   defaultTestReleaseInfo,
   normalizeTestReleaseInfo,
@@ -12,6 +13,7 @@ import {
   testReleaseDownloadUrl,
   testReleasePagePath,
   testReleaseShareText,
+  uploadTestReleaseFile,
   type TestReleaseInfo
 } from '@/lib/testRelease'
 
@@ -294,6 +296,8 @@ export function UploadWorkspace() {
   const [testReleaseArchive, setTestReleaseArchive] = useState<TestReleaseInfo[]>([])
   const [testReleaseMessage, setTestReleaseMessage] = useState('')
   const [testReleaseLoading, setTestReleaseLoading] = useState(false)
+  const [testReleaseUploading, setTestReleaseUploading] = useState(false)
+  const [testReleaseUploadProgress, setTestReleaseUploadProgress] = useState(0)
   const [testReleaseError, setTestReleaseError] = useState('')
   const [testReleaseArchiveFilter, setTestReleaseArchiveFilter] = useState<'active' | 'submissions' | 'archived' | 'all'>('active')
   const [browserOrigin, setBrowserOrigin] = useState('')
@@ -479,6 +483,31 @@ export function UploadWorkspace() {
       setTestReleaseError(err?.message || '提测信息保存失败')
     } finally {
       setTestReleaseLoading(false)
+    }
+  }
+
+  async function uploadTestReleaseApk(fileToUpload: File | null) {
+    if (!fileToUpload) return
+    setTestReleaseError('')
+    setTestReleaseMessage('')
+    setTestReleaseUploading(true)
+    setTestReleaseUploadProgress(0)
+    try {
+      const uploaded = await uploadTestReleaseFile(fileToUpload, setTestReleaseUploadProgress)
+      const next = normalizeTestReleaseInfo({
+        ...testRelease,
+        apkUrl: uploaded.apkUrl,
+        apkSize: uploaded.apkSize,
+        updatedAt: new Date().toLocaleString('zh-CN', { hour12: false }),
+        productName: testRelease.productName || uploaded.fileName.replace(/\.apk$/i, '')
+      })
+      saveTestReleaseDraft(next)
+      setTestReleaseMessage(`APK 已上传：${uploaded.fileName}，下载地址已自动填入。`)
+    } catch (err: any) {
+      setTestReleaseError(err?.message || 'APK 上传失败，请稍后重试。')
+    } finally {
+      setTestReleaseUploading(false)
+      setTimeout(() => setTestReleaseUploadProgress(0), 800)
     }
   }
 
@@ -1177,6 +1206,29 @@ export function UploadWorkspace() {
                 </div>
               </div>
 
+              <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-950">上传 APK 生成下载地址</h4>
+                    <p className="mt-1 text-sm leading-6 text-slate-500">上传后会自动填入 APK 下载地址和大小；已有外部直链时也可以手动填写。</p>
+                  </div>
+                  <label className={classNames('btn-primary cursor-pointer', testReleaseUploading && 'pointer-events-none opacity-60')}>
+                    {testReleaseUploading ? `上传中 ${testReleaseUploadProgress}%` : '选择 APK 上传'}
+                    <input
+                      type="file"
+                      accept={TEST_RELEASE_UPLOAD_ACCEPT}
+                      className="hidden"
+                      onChange={event => uploadTestReleaseApk(event.target.files?.[0] || null)}
+                    />
+                  </label>
+                </div>
+                {testReleaseUploading && (
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full rounded-full bg-slate-900 transition-all" style={{ width: `${testReleaseUploadProgress}%` }} />
+                  </div>
+                )}
+              </div>
+
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <label className="block">
                   <span className="text-sm font-semibold text-slate-800">游戏 / 产品名称</span>
@@ -1196,7 +1248,7 @@ export function UploadWorkspace() {
                 </label>
                 <label className="block md:col-span-2">
                   <span className="text-sm font-semibold text-slate-800">APK 下载地址</span>
-                  <input value={testRelease.apkUrl} onChange={event => updateTestRelease('apkUrl', event.target.value)} className={fieldClass} placeholder="https://..." />
+                  <input value={testRelease.apkUrl} onChange={event => updateTestRelease('apkUrl', event.target.value)} className={fieldClass} placeholder="上传 APK 后自动生成，也可手动填写 https://..." />
                 </label>
                 <label className="block">
                   <span className="text-sm font-semibold text-slate-800">APK 大小</span>
@@ -1265,7 +1317,7 @@ export function UploadWorkspace() {
               {testReleaseMessage && <div className="mt-4 break-all rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{testReleaseMessage}</div>}
 
               <div className="mt-5 flex flex-wrap gap-2">
-                <button type="button" onClick={saveTestReleaseToArchive} disabled={testReleaseLoading} className="btn-primary">{testRelease.id ? '保存修改' : '保存并发布'}</button>
+                <button type="button" onClick={saveTestReleaseToArchive} disabled={testReleaseLoading || testReleaseUploading} className="btn-primary">{testRelease.id ? '保存修改' : '保存并发布'}</button>
                 {shareUrl ? <a href={shareUrl} target="_blank" rel="noreferrer" className="btn-secondary">打开提测页</a> : <button type="button" disabled className="btn-secondary">保存后生成链接</button>}
                 {shareUrl && <CopyButton text={shareUrl} label="复制提测链接" variant="light" />}
                 {shareUrl && <CopyButton text={shareText} label="复制提测说明" variant="light" />}

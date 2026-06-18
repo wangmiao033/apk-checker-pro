@@ -23,12 +23,15 @@ const port = Number(process.env.PORT || 8080)
 const maxUploadMB = Number(process.env.MAX_UPLOAD_MB || 2048)
 const maxSize = maxUploadMB * 1024 * 1024
 const tmpRoot = process.env.APK_TMP_DIR || path.join(os.tmpdir(), 'apk-checker-api')
+const dataRoot = process.env.APK_DATA_DIR || path.join(process.cwd(), 'data')
+const releaseFileRoot = process.env.TEST_RELEASE_FILE_DIR || path.join(dataRoot, 'test-release-files')
 const allowedOrigins = (process.env.CORS_ORIGIN || 'https://apk.hnchpower.cn,https://apk-checker-pro.vercel.app')
   .split(',')
   .map(item => item.trim())
   .filter(Boolean)
 
 fs.mkdirSync(tmpRoot, { recursive: true })
+fs.mkdirSync(releaseFileRoot, { recursive: true })
 
 function safeFileName(name) {
   const base = path.basename(name || 'upload.apk')
@@ -75,7 +78,7 @@ function listZipEntries(filePath) {
   })
   const entries = []
   for (const line of output.split(/\r?\n/)) {
-    const match = line.match(/^\s*(\d+)\s+\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}\s+(.+?)\s*$/)
+    const match = line.match(/^\s*(\d+)\s+(?:\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4})\s+\d{2}:\d{2}\s+(.+?)\s*$/)
     if (!match) continue
     entries.push({ size: Number(match[1]), name: match[2] })
     if (entries.length > 50000) throw new Error('ZIP 文件目录数量异常，疑似 zip bomb，已拒绝处理。')
@@ -169,6 +172,21 @@ function removeFile(filePath) {
   fs.unlink(filePath, () => {})
 }
 
+function formatSize(bytes) {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(2)} KB`
+  return `${bytes} B`
+}
+
+function publicApiBase(req) {
+  const explicit = process.env.PUBLIC_API_BASE_URL
+  if (explicit) return explicit.replace(/\/+$/g, '')
+  const host = req.get('x-forwarded-host') || req.get('host') || ''
+  const proto = req.get('x-forwarded-proto') || (/^(localhost|127\.|0\.0\.0\.0)/.test(host) ? req.protocol : 'https')
+  return `${proto}://${host}`.replace(/\/+$/g, '')
+}
+
 app.use(cors({
   origin(origin, callback) {
     if (!origin || allowedOrigins.includes(origin)) return callback(null, true)
@@ -191,6 +209,21 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
+  limits: { fileSize: maxSize, files: 1 }
+})
+
+const releaseFileStorage = multer.diskStorage({
+  destination(_req, _file, callback) {
+    callback(null, releaseFileRoot)
+  },
+  filename(_req, file, callback) {
+    const suffix = crypto.randomBytes(8).toString('hex')
+    callback(null, `${Date.now()}-${suffix}-${safeFileName(file.originalname)}`)
+  }
+})
+
+const releaseFileUpload = multer({
+  storage: releaseFileStorage,
   limits: { fileSize: maxSize, files: 1 }
 })
 
@@ -220,6 +253,48 @@ app.get('/api/test-releases', (_req, res) => {
     items: listReleases(),
     generatedAt: new Date().toISOString()
   })
+})
+
+app.post('/api/test-release-files', releaseFileUpload.single('file'), (req, res) => {
+  let filePath = req.file && req.file.path
+
+  try {
+    if (!req.file) return res.status(400).json({ error: '请先选择 APK 文件' })
+    const normalizedUpload = normalizeApkUpload(req.file)
+    filePath = req.file.path
+    const displayName = safeFileName(normalizedUpload.normalizedFileName)
+    const fileId = encodeURIComponent(req.file.filename)
+    const fileName = encodeURIComponent(displayName)
+    const apkUrl = `${publicApiBase(req)}/api/test-release-files/${fileId}/${fileName}`
+
+    return res.status(201).json({
+      item: {
+        fileName: displayName,
+        apkUrl,
+        apkSize: formatSize(req.file.size),
+        sizeBytes: req.file.size,
+        uploadedAt: new Date().toISOString(),
+        uploadIdentification: normalizedUpload
+      }
+    })
+  } catch (error) {
+    removeFile(filePath)
+    if (/不是有效 APK|不是 APK 包|ZIP 文件|zip bomb|异常超大文件|未检测到 AndroidManifest\.xml/.test(error.message || '')) {
+      return res.status(400).json({ error: error.message })
+    }
+    return res.status(500).json({ error: error.message || 'APK 上传失败' })
+  }
+})
+
+app.get('/api/test-release-files/:fileId/:fileName?', (req, res) => {
+  const fileId = safeFileName(req.params.fileId)
+  const filePath = path.join(releaseFileRoot, fileId)
+  if (!fileId || path.dirname(fileId) !== '.' || !fs.existsSync(filePath)) {
+    return res.status(404).send('APK 文件不存在或已清理')
+  }
+  const downloadName = safeFileName(req.params.fileName || fileId)
+  res.setHeader('Content-Type', 'application/vnd.android.package-archive')
+  return res.download(filePath, downloadName)
 })
 
 app.post('/api/test-releases', (req, res) => {

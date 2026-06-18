@@ -27,6 +27,14 @@ export type TestReleaseInfo = {
   screenshots: string[]
 }
 
+export type TestReleaseFileUploadResult = {
+  fileName: string
+  apkUrl: string
+  apkSize: string
+  sizeBytes: number
+  uploadedAt: string
+}
+
 export const defaultTestReleaseInfo: TestReleaseInfo = {
   id: '',
   source: 'admin',
@@ -56,6 +64,8 @@ export const defaultTestReleaseInfo: TestReleaseInfo = {
   screenshots: []
 }
 
+export const TEST_RELEASE_UPLOAD_ACCEPT = '.apk,.apk.1,.apk.txt,application/vnd.android.package-archive,application/zip,*/*'
+
 export function testReleaseApiBase() {
   const explicit = process.env.NEXT_PUBLIC_TEST_RELEASE_API_URL
   if (explicit) return explicit.replace(/\/+$/g, '')
@@ -68,6 +78,16 @@ export function testReleaseApiBase() {
   return '/api/test-releases'
 }
 
+export function testReleaseFileUploadUrl() {
+  const base = testReleaseApiBase()
+  if (base.startsWith('/')) return '/api/test-release-files'
+  try {
+    return new URL('/api/test-release-files', base).toString()
+  } catch {
+    return '/api/test-release-files'
+  }
+}
+
 export function testSubmissionApiUrl() {
   const base = testReleaseApiBase()
   if (base.startsWith('/')) return '/api/test-submissions'
@@ -76,6 +96,39 @@ export function testSubmissionApiUrl() {
   } catch {
     return '/api/test-submissions'
   }
+}
+
+export function uploadTestReleaseFile(file: File, onProgress?: (progress: number) => void) {
+  return new Promise<TestReleaseFileUploadResult>((resolve, reject) => {
+    const form = new FormData()
+    form.append('file', file)
+
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', testReleaseFileUploadUrl())
+    xhr.responseType = 'text'
+    xhr.timeout = 60 * 60 * 1000
+
+    xhr.upload.onprogress = event => {
+      if (!event.lengthComputable) return
+      onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)))
+    }
+
+    xhr.onload = () => {
+      const raw = xhr.responseText || ''
+      let json: any = null
+      try { json = raw ? JSON.parse(raw) : null } catch {}
+      if (xhr.status >= 200 && xhr.status < 300 && json?.item?.apkUrl) {
+        onProgress?.(100)
+        resolve(json.item)
+        return
+      }
+      reject(new Error(json?.error || raw || `APK 上传失败，HTTP 状态码：${xhr.status}`))
+    }
+    xhr.onerror = () => reject(new Error('APK 上传失败，请检查网络或稍后重试。'))
+    xhr.ontimeout = () => reject(new Error('APK 上传超时，请检查网络或文件大小。'))
+    xhr.onabort = () => reject(new Error('APK 上传已取消。'))
+    xhr.send(form)
+  })
 }
 
 export function testReleasePagePath(info: Pick<TestReleaseInfo, 'id'>) {
