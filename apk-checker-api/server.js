@@ -16,6 +16,7 @@ const {
   incrementDownload,
   toPublicRelease
 } = require('./lib/testReleaseStore')
+const { registerUser, loginUser, userFromToken } = require('./lib/userStore')
 const pkg = require('./package.json')
 
 const app = express()
@@ -193,9 +194,24 @@ app.use(cors({
     return callback(new Error('CORS origin is not allowed'))
   },
   methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type']
+  allowedHeaders: ['Content-Type', 'Authorization']
 }))
 app.use(express.json({ limit: '1mb' }))
+
+function authUser(req) {
+  const header = req.get('authorization') || ''
+  const match = header.match(/^Bearer\s+(.+)$/i)
+  return match ? userFromToken(match[1]) : null
+}
+
+function requireAuth(req, res) {
+  const user = authUser(req)
+  if (!user) {
+    res.status(401).json({ error: '请先用邮箱注册或登录' })
+    return null
+  }
+  return user
+}
 
 const storage = multer.diskStorage({
   destination(_req, _file, callback) {
@@ -248,14 +264,43 @@ app.get('/api/version', (_req, res) => {
   })
 })
 
-app.get('/api/test-releases', (_req, res) => {
+app.post('/api/auth/register', (req, res) => {
+  try {
+    res.status(201).json(registerUser(req.body || {}))
+  } catch (error) {
+    res.status(400).json({ error: error.message || '注册失败' })
+  }
+})
+
+app.post('/api/auth/login', (req, res) => {
+  try {
+    res.json(loginUser(req.body || {}))
+  } catch (error) {
+    res.status(400).json({ error: error.message || '登录失败' })
+  }
+})
+
+app.get('/api/auth/me', (req, res) => {
+  const user = requireAuth(req, res)
+  if (!user) return
+  res.json({ user })
+})
+
+app.get('/api/test-releases', (req, res) => {
+  const user = req.query.scope === 'mine' ? requireAuth(req, res) : null
+  if (req.query.scope === 'mine' && !user) return
   res.json({
-    items: listReleases(),
+    items: listReleases(user ? { userId: user.id } : {}),
     generatedAt: new Date().toISOString()
   })
 })
 
 app.post('/api/test-release-files', releaseFileUpload.single('file'), (req, res) => {
+  const user = requireAuth(req, res)
+  if (!user) {
+    removeFile(req.file && req.file.path)
+    return
+  }
   let filePath = req.file && req.file.path
 
   try {
@@ -274,6 +319,7 @@ app.post('/api/test-release-files', releaseFileUpload.single('file'), (req, res)
         apkSize: formatSize(req.file.size),
         sizeBytes: req.file.size,
         uploadedAt: new Date().toISOString(),
+        ownerEmail: user.email,
         uploadIdentification: normalizedUpload
       }
     })
@@ -307,9 +353,14 @@ app.post('/api/test-releases', (req, res) => {
 })
 
 app.post('/api/test-submissions', (req, res) => {
+  const user = requireAuth(req, res)
+  if (!user) return
   try {
     const release = createRelease({
       ...(req.body || {}),
+      userId: user.id,
+      ownerEmail: user.email,
+      submitterContact: req.body?.submitterContact || user.email,
       status: '待处理',
       source: 'submission'
     }, 'submission')

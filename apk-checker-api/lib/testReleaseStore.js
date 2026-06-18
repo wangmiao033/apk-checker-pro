@@ -87,6 +87,8 @@ function normalizeRelease(input = {}, existing = {}) {
     ...existing,
     id: existing.id || cleanText(input.id) || makeId(),
     source: input.source === 'submission' || existing.source === 'submission' ? 'submission' : 'admin',
+    userId: cleanText(input.userId ?? existing.userId),
+    ownerEmail: cleanText(input.ownerEmail ?? existing.ownerEmail),
     createdAt: existing.createdAt || cleanText(input.createdAt) || timestamp,
     recordUpdatedAt: timestamp,
     downloadCount: Number.isFinite(Number(existing.downloadCount)) ? Number(existing.downloadCount) : 0,
@@ -110,6 +112,8 @@ function normalizeRelease(input = {}, existing = {}) {
 
 function toPublicRelease(release) {
   const {
+    userId,
+    ownerEmail,
     submitterName,
     submitterContact,
     ...publicRelease
@@ -117,8 +121,10 @@ function toPublicRelease(release) {
   return publicRelease
 }
 
-function listReleases() {
-  return readAll().sort((a, b) => String(b.recordUpdatedAt || b.createdAt).localeCompare(String(a.recordUpdatedAt || a.createdAt)))
+function listReleases(options = {}) {
+  return readAll()
+    .filter(item => !options.userId || item.userId === options.userId)
+    .sort((a, b) => String(b.recordUpdatedAt || b.createdAt).localeCompare(String(a.recordUpdatedAt || a.createdAt)))
 }
 
 function getRelease(id) {

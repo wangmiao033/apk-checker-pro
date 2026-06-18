@@ -1,6 +1,8 @@
 export type TestReleaseInfo = {
   id?: string
   source?: 'admin' | 'submission'
+  userId?: string
+  ownerEmail?: string
   productName: string
   versionName: string
   packageName: string
@@ -35,9 +37,24 @@ export type TestReleaseFileUploadResult = {
   uploadedAt: string
 }
 
+export type TestReleaseUser = {
+  id: string
+  email: string
+  displayName?: string
+  createdAt?: string
+}
+
+export type TestReleaseAuthSession = {
+  token: string
+  expiresAt?: string
+  user: TestReleaseUser
+}
+
 export const defaultTestReleaseInfo: TestReleaseInfo = {
   id: '',
   source: 'admin',
+  userId: '',
+  ownerEmail: '',
   productName: '',
   versionName: '',
   packageName: '',
@@ -65,6 +82,7 @@ export const defaultTestReleaseInfo: TestReleaseInfo = {
 }
 
 export const TEST_RELEASE_UPLOAD_ACCEPT = '.apk,.apk.1,.apk.txt,application/vnd.android.package-archive,application/zip,*/*'
+export const TEST_RELEASE_AUTH_STORAGE_KEY = 'apkflow-test-release-auth'
 
 export function testReleaseApiBase() {
   const explicit = process.env.NEXT_PUBLIC_TEST_RELEASE_API_URL
@@ -88,6 +106,42 @@ export function testReleaseFileUploadUrl() {
   }
 }
 
+export function testReleaseAuthApiUrl(path: 'register' | 'login' | 'me') {
+  const base = testReleaseApiBase()
+  if (base.startsWith('/')) return `/api/auth/${path}`
+  try {
+    return new URL(`/api/auth/${path}`, base).toString()
+  } catch {
+    return `/api/auth/${path}`
+  }
+}
+
+export function getStoredTestReleaseAuth(): TestReleaseAuthSession | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TEST_RELEASE_AUTH_STORAGE_KEY) || 'null')
+    if (!parsed?.token || !parsed?.user?.email) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+export function storeTestReleaseAuth(session: TestReleaseAuthSession) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(TEST_RELEASE_AUTH_STORAGE_KEY, JSON.stringify(session))
+}
+
+export function clearStoredTestReleaseAuth() {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem(TEST_RELEASE_AUTH_STORAGE_KEY)
+}
+
+export function testReleaseAuthHeaders(): Record<string, string> {
+  const session = getStoredTestReleaseAuth()
+  return session?.token ? { Authorization: `Bearer ${session.token}` } : {}
+}
+
 export function testSubmissionApiUrl() {
   const base = testReleaseApiBase()
   if (base.startsWith('/')) return '/api/test-submissions'
@@ -107,6 +161,8 @@ export function uploadTestReleaseFile(file: File, onProgress?: (progress: number
     xhr.open('POST', testReleaseFileUploadUrl())
     xhr.responseType = 'text'
     xhr.timeout = 60 * 60 * 1000
+    const token = getStoredTestReleaseAuth()?.token
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 
     xhr.upload.onprogress = event => {
       if (!event.lengthComputable) return
@@ -172,6 +228,8 @@ export function normalizeTestReleaseInfo(input: Partial<TestReleaseInfo> = {}): 
     updatedAt: String(input.updatedAt || ''),
     recordUpdatedAt: String(input.recordUpdatedAt || ''),
     owner: String(input.owner || ''),
+    userId: String(input.userId || ''),
+    ownerEmail: String(input.ownerEmail || ''),
     ownerContact: String(input.ownerContact || ''),
     submitterName: String(input.submitterName || ''),
     submitterContact: String(input.submitterContact || ''),

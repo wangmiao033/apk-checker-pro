@@ -50,6 +50,12 @@ Open:
 http://localhost:3000
 ```
 
+Test release user flow:
+
+- `/center`: email registration/login, APK upload, submission, and personal distribution records
+- `/submit`: same submission flow for shared entry links
+- `/test/:id`: public tester-facing download page
+
 ### Build
 
 ```bash
@@ -91,6 +97,9 @@ It provides:
 - `GET /api/health`
 - `GET /health`
 - `GET /api/version`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
 - `POST /api/test-release-files`
 - `GET /api/test-release-files/:fileId/:fileName`
 - `GET /api/test-releases`
@@ -123,6 +132,7 @@ Runtime behavior:
 - hard checks return Chinese explanations, risk levels, current values, expected values, and remediation suggestions
 - test release records are persisted as JSON and can be configured with `APK_DATA_DIR` or `TEST_RELEASE_STORE_FILE`
 - test release file storage can be configured with `TEST_RELEASE_FILE_DIR`
+- test release public submit flow requires email + password registration/login before file upload or submission
 - test release download counts only cover clicks through `/api/test-releases/:id/download`
 
 Hard checks:

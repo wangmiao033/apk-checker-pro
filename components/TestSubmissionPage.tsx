@@ -1,15 +1,22 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CopyButton } from './CopyButton'
 import {
   TEST_RELEASE_UPLOAD_ACCEPT,
+  clearStoredTestReleaseAuth,
   defaultTestReleaseInfo,
+  getStoredTestReleaseAuth,
   normalizeTestReleaseInfo,
+  storeTestReleaseAuth,
+  testReleaseApiBase,
+  testReleaseAuthApiUrl,
+  testReleaseAuthHeaders,
   testReleasePagePath,
   testReleaseShareText,
   testSubmissionApiUrl,
   uploadTestReleaseFile,
+  type TestReleaseAuthSession,
   type TestReleaseInfo
 } from '@/lib/testRelease'
 
@@ -76,6 +83,13 @@ function TextArea({
 }
 
 export function TestSubmissionPage() {
+  const [auth, setAuth] = useState<TestReleaseAuthSession | null>(null)
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('register')
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authName, setAuthName] = useState('')
+  const [authLoading, setAuthLoading] = useState(false)
+  const [authError, setAuthError] = useState('')
   const [form, setForm] = useState<TestReleaseInfo>(() => normalizeTestReleaseInfo({
     ...defaultTestReleaseInfo,
     source: 'submission',
@@ -89,6 +103,8 @@ export function TestSubmissionPage() {
   const [uploadMessage, setUploadMessage] = useState('')
   const [error, setError] = useState('')
   const [created, setCreated] = useState<TestReleaseInfo | null>(null)
+  const [myReleases, setMyReleases] = useState<TestReleaseInfo[]>([])
+  const [releasesLoading, setReleasesLoading] = useState(false)
 
   const pageUrl = useMemo(() => {
     if (!created?.id) return ''
@@ -96,8 +112,96 @@ export function TestSubmissionPage() {
     return new URL(testReleasePagePath(created), window.location.origin).toString()
   }, [created])
 
+  function releasePageUrl(item: TestReleaseInfo) {
+    if (!item.id) return ''
+    if (typeof window === 'undefined') return testReleasePagePath(item)
+    return new URL(testReleasePagePath(item), window.location.origin).toString()
+  }
+
+  useEffect(() => {
+    const stored = getStoredTestReleaseAuth()
+    if (stored) {
+      setAuth(stored)
+      setAuthEmail(stored.user.email)
+      refreshMyReleases()
+      fetch(testReleaseAuthApiUrl('me'), { headers: testReleaseAuthHeaders(), cache: 'no-store' })
+        .then(response => {
+          if (!response.ok) throw new Error('session expired')
+        })
+        .catch(() => {
+          clearStoredTestReleaseAuth()
+          setAuth(null)
+          setMyReleases([])
+        })
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!auth) return
+    setForm(prev => normalizeTestReleaseInfo({
+      ...prev,
+      submitterName: prev.submitterName || auth.user.displayName || auth.user.email,
+      submitterContact: prev.submitterContact || auth.user.email,
+      ownerEmail: auth.user.email,
+      userId: auth.user.id
+    }))
+  }, [auth])
+
   function update<K extends keyof TestReleaseInfo>(key: K, value: TestReleaseInfo[K]) {
     setForm(prev => normalizeTestReleaseInfo({ ...prev, [key]: value }))
+  }
+
+  async function authenticate(event: React.FormEvent) {
+    event.preventDefault()
+    setAuthError('')
+    setAuthLoading(true)
+    try {
+      const response = await fetch(testReleaseAuthApiUrl(authMode), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: authEmail,
+          password: authPassword,
+          displayName: authName
+        })
+      })
+      const json = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(json?.error || '账号处理失败')
+      const session = json as TestReleaseAuthSession
+      storeTestReleaseAuth(session)
+      setAuth(session)
+      setAuthPassword('')
+      setAuthError('')
+      refreshMyReleases()
+    } catch (err: any) {
+      setAuthError(err?.message || '账号处理失败')
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  function logout() {
+    clearStoredTestReleaseAuth()
+    setAuth(null)
+    setMyReleases([])
+    setCreated(null)
+  }
+
+  async function refreshMyReleases() {
+    setReleasesLoading(true)
+    try {
+      const response = await fetch(`${testReleaseApiBase()}?scope=mine`, {
+        headers: testReleaseAuthHeaders(),
+        cache: 'no-store'
+      })
+      const json = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(json?.error || '分发记录加载失败')
+      setMyReleases(Array.isArray(json?.items) ? json.items.map((item: any) => normalizeTestReleaseInfo(item)) : [])
+    } catch {
+      setMyReleases([])
+    } finally {
+      setReleasesLoading(false)
+    }
   }
 
   async function uploadApk(file: File | null) {
@@ -145,17 +249,70 @@ export function TestSubmissionPage() {
     try {
       const response = await fetch(testSubmissionApiUrl(), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...testReleaseAuthHeaders() },
         body: JSON.stringify(form)
       })
       const json = await response.json().catch(() => null)
       if (!response.ok) throw new Error(json?.error || '提交失败，请稍后重试。')
       setCreated(normalizeTestReleaseInfo(json.item || json))
+      refreshMyReleases()
     } catch (err: any) {
       setError(err?.message || '提交失败，请稍后重试。')
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (!auth) {
+    return (
+      <main className="min-h-screen bg-slate-100 px-4 py-6 lg:py-10">
+        <div className="mx-auto max-w-5xl space-y-5">
+          <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">APKFLOW TEST SUBMISSION</div>
+                <h1 className="mt-1 break-words text-2xl font-semibold tracking-tight text-slate-950 md:text-[28px]">游戏提测登记</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">先用邮箱建立账号，之后上传 APK、提交分发信息，并在个人中心管理历史分发。</p>
+              </div>
+              <a href="/" className="btn-secondary">返回检测平台</a>
+            </div>
+          </header>
+
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="status-info">第 1 步</div>
+              <h2 className="mt-3 text-xl font-semibold text-slate-950">邮箱注册 / 登录</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">提测包和分发记录会归属到这个邮箱账号。当前版本使用邮箱 + 密码登录，后续可接入邮箱验证码。</p>
+
+              <form onSubmit={authenticate} className="mt-5 space-y-4">
+                <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                  <button type="button" onClick={() => setAuthMode('register')} className={classNames('flex-1 rounded-md px-3 py-2 text-sm font-semibold', authMode === 'register' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500')}>注册</button>
+                  <button type="button" onClick={() => setAuthMode('login')} className={classNames('flex-1 rounded-md px-3 py-2 text-sm font-semibold', authMode === 'login' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500')}>登录</button>
+                </div>
+                {authMode === 'register' && (
+                  <Field label="姓名 / 昵称" value={authName} onChange={setAuthName} placeholder="用于个人中心展示，可不填" />
+                )}
+                <Field label="邮箱" value={authEmail} onChange={setAuthEmail} placeholder="name@example.com" required type="email" />
+                <Field label="密码" value={authPassword} onChange={setAuthPassword} placeholder="至少 6 位" required type="password" />
+                {authError && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{authError}</div>}
+                <button type="submit" disabled={authLoading} className={classNames('btn-primary w-full', authLoading && 'opacity-60')}>
+                  {authLoading ? '处理中...' : authMode === 'register' ? '注册并进入提测' : '登录'}
+                </button>
+              </form>
+            </section>
+
+            <aside className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:self-start">
+              <h2 className="text-base font-semibold text-slate-950">为什么要先注册</h2>
+              <div className="mt-4 space-y-3 text-sm leading-6 text-slate-600">
+                <p>APK 文件较大，必须有账号归属，方便后续找到是谁上传、谁可以继续编辑。</p>
+                <p>提交后的提测页、下载次数、历史版本会进入个人中心，不再散落在聊天记录里。</p>
+                <p>测试方仍然不需要登录，只打开你分享的提测页下载 APK。</p>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </main>
+    )
   }
 
   if (created) {
@@ -176,6 +333,7 @@ export function TestSubmissionPage() {
             <a href={pageUrl} className="btn-primary">打开提测页</a>
             <CopyButton text={pageUrl} label="复制提测链接" variant="light" />
             <CopyButton text={testReleaseShareText(created, pageUrl)} label="复制提测说明" variant="light" />
+            <button type="button" onClick={() => { setCreated(null); refreshMyReleases() }} className="btn-secondary">回到个人中心</button>
             <a href="/" className="btn-secondary">返回 APKFlow</a>
           </div>
         </section>
@@ -191,9 +349,13 @@ export function TestSubmissionPage() {
             <div className="min-w-0">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">APKFLOW TEST SUBMISSION</div>
               <h1 className="mt-1 break-words text-2xl font-semibold tracking-tight text-slate-950 md:text-[28px]">游戏提测登记</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">填写产品介绍、APK 下载地址和测试范围，生成可给测试方打开的提测下载页。</p>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">第 2 步：上传 APK、填写产品介绍和测试范围，提交后进入个人中心。</p>
             </div>
-            <a href="/" className="btn-secondary">返回检测平台</a>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">{auth.user.email}</span>
+              <button type="button" onClick={logout} className="btn-secondary">退出</button>
+              <a href="/" className="btn-secondary">返回检测平台</a>
+            </div>
           </div>
         </header>
 
@@ -262,6 +424,50 @@ export function TestSubmissionPage() {
             </button>
           </aside>
         </form>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">个人中心 · 我的分发</h2>
+              <p className="mt-1 text-sm text-slate-500">当前邮箱账号提交过的提测页都会保存在这里。</p>
+            </div>
+            <button type="button" onClick={refreshMyReleases} className="btn-secondary" disabled={releasesLoading}>{releasesLoading ? '刷新中...' : '刷新'}</button>
+          </div>
+
+          <div className="mt-5 grid gap-3">
+            {releasesLoading && <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">正在加载分发记录...</div>}
+            {!releasesLoading && myReleases.length === 0 && (
+              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">暂无分发记录。提交第一条提测后会出现在这里。</div>
+            )}
+            {!releasesLoading && myReleases.map(item => {
+              const url = releasePageUrl(item)
+              return (
+                <article key={item.id || item.productName} className="rounded-lg border border-slate-200 bg-white p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={item.archived ? 'status-warn' : 'status-info'}>{item.archived ? '已归档' : item.status || '待处理'}</span>
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">下载 {Number(item.downloadCount || 0)} 次</span>
+                      </div>
+                      <h3 className="mt-3 break-words text-base font-semibold text-slate-950">{item.productName || '未命名产品'}</h3>
+                      <div className="mt-2 grid gap-x-4 gap-y-1 text-xs text-slate-500 sm:grid-cols-2 lg:grid-cols-4">
+                        <span>版本：{item.versionName || '未填写'}</span>
+                        <span>包名：{item.packageName || '未填写'}</span>
+                        <span>大小：{item.apkSize || '未填写'}</span>
+                        <span>提交时间：{item.createdAt || '未记录'}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {url && <a href={url} target="_blank" rel="noreferrer" className="btn-secondary btn-sm">打开提测页</a>}
+                      {url && <CopyButton text={url} label="复制链接" variant="light" size="sm" />}
+                      {url && <CopyButton text={testReleaseShareText(item, url)} label="复制说明" variant="light" size="sm" />}
+                    </div>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        </section>
       </div>
     </main>
   )

@@ -7,6 +7,9 @@ Standalone APK static analysis backend for APKFlow.
 - `POST /api/analyze`
 - `GET /api/health`
 - `GET /health`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
 - `POST /api/test-release-files`
 - `GET /api/test-release-files/:fileId/:fileName`
 - `GET /api/test-releases`
@@ -28,11 +31,16 @@ Test release records are stored as JSON. Configure storage with:
 - `APK_DATA_DIR`: directory for backend runtime data
 - `TEST_RELEASE_STORE_FILE`: exact JSON file path
 - `TEST_RELEASE_FILE_DIR`: exact directory for uploaded test release APK files
+- `TEST_RELEASE_USER_STORE_FILE`: exact JSON file path for email/password users and sessions
+- `TEST_RELEASE_SESSION_DAYS`: session lifetime in days
 
 `POST /api/test-release-files` accepts `multipart/form-data`:
 
 - `file`: APK content, required, max `MAX_UPLOAD_MB`
+- Requires `Authorization: Bearer <token>` from `/api/auth/register` or `/api/auth/login`
 - Returns `apkUrl` and `apkSize`; use `apkUrl` as the release download source.
+
+`POST /api/test-submissions` also requires `Authorization: Bearer <token>`. `GET /api/test-releases?scope=mine` returns the current user's personal distribution records.
 
 Download counts are incremented only when users visit `/api/test-releases/:id/download`; direct third-party APK URLs cannot be counted by APKFlow.
 

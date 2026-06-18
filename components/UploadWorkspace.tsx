@@ -1187,7 +1187,7 @@ export function UploadWorkspace() {
                 <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">为外部测试方生成独立下载页。APK 文件建议放对象存储、CDN 或企业网盘直链，APKFlow 负责产品介绍、下载入口、下载次数和存档。</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <a href="/submit" target="_blank" rel="noreferrer" className="btn-secondary">打开注册提测入口</a>
+                <a href="/center" target="_blank" rel="noreferrer" className="btn-secondary">打开提测个人中心</a>
                 <button type="button" onClick={refreshTestReleaseArchive} className="btn-secondary" disabled={testReleaseLoading}>刷新存档</button>
               </div>
             </div>
@@ -1352,10 +1352,10 @@ export function UploadWorkspace() {
 
               <section className="glass-card p-5">
                 <h3 className="text-base font-semibold text-slate-950">注册入口</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-500">外部产品方可通过登记页提交游戏介绍、APK 下载地址和联系方式，提交后进入下方存档。</p>
+                <p className="mt-2 text-sm leading-6 text-slate-500">外部产品方先用邮箱注册/登录，再上传 APK 和提交提测信息；记录会保存在个人中心。</p>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <a href="/submit" target="_blank" rel="noreferrer" className="btn-primary">打开登记页</a>
-                  <CopyButton text={absoluteUrl('/submit', browserOrigin)} label="复制登记链接" variant="light" />
+                  <a href="/center" target="_blank" rel="noreferrer" className="btn-primary">打开个人中心</a>
+                  <CopyButton text={absoluteUrl('/center', browserOrigin)} label="复制入口链接" variant="light" />
                 </div>
               </section>
             </aside>
@@ -1547,7 +1547,7 @@ export function UploadWorkspace() {
               <p className="mt-2 text-sm text-slate-500">上传 APK 后自动生成多渠道提交前检测报告</p>
             </div>
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-              <a href="/submit" target="_blank" rel="noreferrer" className="btn-secondary">注册提测</a>
+              <a href="/center" target="_blank" rel="noreferrer" className="btn-secondary">提测 / 个人中心</a>
               <button type="button" onClick={() => setDiagnosticsOpen(open => !open)} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:bg-white">
                 <div className={classNames('h-2.5 w-2.5 rounded-full', !healthChecked ? 'bg-amber-500' : engineMode === 'full' ? 'bg-emerald-500' : engineMode === 'degraded' ? 'bg-amber-500' : 'bg-rose-500')} />
                 <div>
