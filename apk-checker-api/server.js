@@ -7,6 +7,15 @@ const cors = require('cors')
 const express = require('express')
 const multer = require('multer')
 const { analyzeApk, getEngineHealth } = require('./lib/analyzer')
+const {
+  listReleases,
+  getRelease,
+  createRelease,
+  updateRelease,
+  setArchived,
+  incrementDownload,
+  toPublicRelease
+} = require('./lib/testReleaseStore')
 const pkg = require('./package.json')
 
 const app = express()
@@ -168,6 +177,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type']
 }))
+app.use(express.json({ limit: '1mb' }))
 
 const storage = multer.diskStorage({
   destination(_req, _file, callback) {
@@ -203,6 +213,70 @@ app.get('/api/version', (_req, res) => {
     uptime: Math.round(process.uptime()),
     now: new Date().toISOString()
   })
+})
+
+app.get('/api/test-releases', (_req, res) => {
+  res.json({
+    items: listReleases(),
+    generatedAt: new Date().toISOString()
+  })
+})
+
+app.post('/api/test-releases', (req, res) => {
+  try {
+    const release = createRelease(req.body || {}, 'admin')
+    res.status(201).json({ item: release })
+  } catch (error) {
+    res.status(400).json({ error: error.message || '提测信息保存失败' })
+  }
+})
+
+app.post('/api/test-submissions', (req, res) => {
+  try {
+    const release = createRelease({
+      ...(req.body || {}),
+      status: '待处理',
+      source: 'submission'
+    }, 'submission')
+    res.status(201).json({ item: release })
+  } catch (error) {
+    res.status(400).json({ error: error.message || '提测登记提交失败' })
+  }
+})
+
+app.get('/api/test-releases/:id', (req, res) => {
+  const release = getRelease(req.params.id)
+  if (!release) return res.status(404).json({ error: '未找到提测记录' })
+  return res.json({ item: toPublicRelease(release) })
+})
+
+app.post('/api/test-releases/:id', (req, res) => {
+  try {
+    const release = updateRelease(req.params.id, req.body || {})
+    if (!release) return res.status(404).json({ error: '未找到提测记录' })
+    return res.json({ item: release })
+  } catch (error) {
+    return res.status(400).json({ error: error.message || '提测信息更新失败' })
+  }
+})
+
+app.post('/api/test-releases/:id/archive', (req, res) => {
+  const release = setArchived(req.params.id, true)
+  if (!release) return res.status(404).json({ error: '未找到提测记录' })
+  return res.json({ item: release })
+})
+
+app.post('/api/test-releases/:id/restore', (req, res) => {
+  const release = setArchived(req.params.id, false)
+  if (!release) return res.status(404).json({ error: '未找到提测记录' })
+  return res.json({ item: release })
+})
+
+app.get('/api/test-releases/:id/download', (req, res) => {
+  const release = incrementDownload(req.params.id)
+  if (!release) return res.status(404).send('未找到提测记录')
+  if (!release.apkUrl) return res.status(404).send('未配置 APK 下载地址')
+  return res.redirect(302, release.apkUrl)
 })
 
 app.post('/api/analyze', upload.single('file'), (req, res) => {

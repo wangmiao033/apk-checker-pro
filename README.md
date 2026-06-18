@@ -91,6 +91,14 @@ It provides:
 - `GET /api/health`
 - `GET /health`
 - `GET /api/version`
+- `GET /api/test-releases`
+- `POST /api/test-releases`
+- `GET /api/test-releases/:id`
+- `POST /api/test-releases/:id`
+- `POST /api/test-releases/:id/archive`
+- `POST /api/test-releases/:id/restore`
+- `GET /api/test-releases/:id/download`
+- `POST /api/test-submissions`
 
 Runtime behavior:
 
@@ -110,6 +118,8 @@ Runtime behavior:
 - parse failures show "评分不可用" and do not generate channel failure conclusions
 - health responses include the current engine mode, tool availability, upload limit, and backend version
 - hard checks return Chinese explanations, risk levels, current values, expected values, and remediation suggestions
+- test release records are persisted as JSON and can be configured with `APK_DATA_DIR` or `TEST_RELEASE_STORE_FILE`
+- test release download counts only cover clicks through `/api/test-releases/:id/download`
 
 Hard checks:
 

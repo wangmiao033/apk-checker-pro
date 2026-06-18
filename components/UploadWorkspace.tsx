@@ -4,9 +4,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { channelRules, type ChannelRule } from '@/lib/channelRules'
 import { ResultDashboard } from './ResultDashboard'
 import { CopyButton } from './CopyButton'
+import {
+  absoluteUrl,
+  defaultTestReleaseInfo,
+  normalizeTestReleaseInfo,
+  testReleaseApiBase,
+  testReleaseDownloadUrl,
+  testReleasePagePath,
+  testReleaseShareText,
+  type TestReleaseInfo
+} from '@/lib/testRelease'
 
 type EngineMode = 'full' | 'degraded' | 'unavailable'
-type ViewKey = 'dashboard' | 'history' | 'rules' | 'reports' | 'settings'
+type ViewKey = 'dashboard' | 'history' | 'rules' | 'reports' | 'test_release' | 'settings'
 type ToolHealth = Record<'unzip' | 'aapt' | 'apksigner' | 'strings', boolean>
 
 type EngineHealth = {
@@ -280,6 +290,13 @@ export function UploadWorkspace() {
   const [reportQuery, setReportQuery] = useState('')
   const [reportStatusFilter, setReportStatusFilter] = useState('all')
   const [reportPackageFilter, setReportPackageFilter] = useState('all')
+  const [testRelease, setTestRelease] = useState<TestReleaseInfo>(() => normalizeTestReleaseInfo(defaultTestReleaseInfo))
+  const [testReleaseArchive, setTestReleaseArchive] = useState<TestReleaseInfo[]>([])
+  const [testReleaseMessage, setTestReleaseMessage] = useState('')
+  const [testReleaseLoading, setTestReleaseLoading] = useState(false)
+  const [testReleaseError, setTestReleaseError] = useState('')
+  const [testReleaseArchiveFilter, setTestReleaseArchiveFilter] = useState<'active' | 'submissions' | 'archived' | 'all'>('active')
+  const [browserOrigin, setBrowserOrigin] = useState('')
   const [selectedChannels, setSelectedChannels] = useState(defaultSelectedRuleIds(channelRules))
   const [rulesJson, setRulesJson] = useState('')
   const [ruleEditMessage, setRuleEditMessage] = useState('')
@@ -297,10 +314,15 @@ export function UploadWorkspace() {
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
+    setBrowserOrigin(window.location.origin)
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {})
     const raw = localStorage.getItem('apkflow-history')
     if (raw) {
       try { setHistory(JSON.parse(raw)) } catch {}
+    }
+    const rawTestRelease = localStorage.getItem('apkflow-test-release')
+    if (rawTestRelease) {
+      try { setTestRelease(normalizeTestReleaseInfo(JSON.parse(rawTestRelease))) } catch {}
     }
     const rawRules = localStorage.getItem('apkflow-channel-rules')
     if (rawRules) {
@@ -380,6 +402,109 @@ export function UploadWorkspace() {
     setHistory(next)
     localStorage.setItem('apkflow-history', JSON.stringify(next))
   }
+
+  function saveTestReleaseDraft(next: TestReleaseInfo) {
+    const normalized = normalizeTestReleaseInfo(next)
+    setTestRelease(normalized)
+    localStorage.setItem('apkflow-test-release', JSON.stringify(normalized))
+  }
+
+  function updateTestRelease<K extends keyof TestReleaseInfo>(key: K, value: TestReleaseInfo[K]) {
+    saveTestReleaseDraft({ ...testRelease, [key]: value })
+    setTestReleaseMessage('')
+  }
+
+  function testReleasePublicUrl(info: Pick<TestReleaseInfo, 'id'>) {
+    if (!info.id) return ''
+    return absoluteUrl(testReleasePagePath(info), browserOrigin)
+  }
+
+  function trackedDownloadUrl(info: Pick<TestReleaseInfo, 'id' | 'apkUrl'>) {
+    return absoluteUrl(testReleaseDownloadUrl(info), browserOrigin)
+  }
+
+  function fillTestReleaseFromResult() {
+    const apkInfo = result?.apkInfo || {}
+    const next = normalizeTestReleaseInfo({
+      ...testRelease,
+      productName: testRelease.productName || apkInfo.appLabel || apkInfo.appName || (apkInfo.fileName || file?.name || '').replace(/\.apk$/i, ''),
+      versionName: apkInfo.versionName || testRelease.versionName,
+      packageName: apkInfo.packageName || testRelease.packageName,
+      buildNo: apkInfo.versionCode || testRelease.buildNo,
+      apkSize: apkInfo.fileSize || (file ? formatBytes(file.size) : testRelease.apkSize),
+      updatedAt: new Date().toLocaleString('zh-CN', { hour12: false })
+    })
+    saveTestReleaseDraft(next)
+    setTestReleaseMessage('已用当前检测结果填充基础信息；请补充 APK 下载地址和产品介绍后保存。')
+  }
+
+  async function refreshTestReleaseArchive() {
+    setTestReleaseLoading(true)
+    setTestReleaseError('')
+    try {
+      const response = await fetch(testReleaseApiBase(), { cache: 'no-store' })
+      const json = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(json?.error || '提测存档加载失败')
+      const items = Array.isArray(json?.items) ? json.items : []
+      setTestReleaseArchive(items.map((item: any) => normalizeTestReleaseInfo(item)))
+    } catch (err: any) {
+      setTestReleaseError(err?.message || '提测存档加载失败')
+    } finally {
+      setTestReleaseLoading(false)
+    }
+  }
+
+  async function saveTestReleaseToArchive() {
+    setTestReleaseLoading(true)
+    setTestReleaseError('')
+    setTestReleaseMessage('')
+    try {
+      const isUpdate = Boolean(testRelease.id)
+      const endpoint = isUpdate ? `${testReleaseApiBase()}/${encodeURIComponent(testRelease.id || '')}` : testReleaseApiBase()
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...testRelease, source: testRelease.source === 'submission' ? 'submission' : 'admin' })
+      })
+      const json = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(json?.error || '提测信息保存失败')
+      const saved = normalizeTestReleaseInfo(json.item || json)
+      saveTestReleaseDraft(saved)
+      setTestReleaseArchive(prev => {
+        const rest = prev.filter(item => item.id !== saved.id)
+        return [saved, ...rest]
+      })
+      setTestReleaseMessage(`已保存到提测存档。${saved.id ? `提测链接：${testReleasePublicUrl(saved)}` : ''}`)
+    } catch (err: any) {
+      setTestReleaseError(err?.message || '提测信息保存失败')
+    } finally {
+      setTestReleaseLoading(false)
+    }
+  }
+
+  async function archiveTestRelease(id: string, archived: boolean) {
+    setTestReleaseLoading(true)
+    setTestReleaseError('')
+    try {
+      const response = await fetch(`${testReleaseApiBase()}/${encodeURIComponent(id)}/${archived ? 'archive' : 'restore'}`, {
+        method: 'POST'
+      })
+      const json = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(json?.error || '归档状态更新失败')
+      const saved = normalizeTestReleaseInfo(json.item || json)
+      setTestReleaseArchive(prev => prev.map(item => item.id === saved.id ? saved : item))
+      if (testRelease.id === saved.id) saveTestReleaseDraft(saved)
+      setTestReleaseMessage(archived ? '已归档该提测记录。' : '已恢复该提测记录。')
+    } catch (err: any) {
+      setTestReleaseError(err?.message || '归档状态更新失败')
+    } finally {
+      setTestReleaseLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeView === 'test_release') refreshTestReleaseArchive()
+  }, [activeView])
 
   function chooseFile(nextFile: File | null) {
     setError('')
@@ -1009,6 +1134,254 @@ export function UploadWorkspace() {
       )
     }
 
+    if (activeView === 'test_release') {
+      const fieldClass = 'mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-400'
+      const textareaClass = 'mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 text-slate-900 outline-none transition focus:border-slate-400'
+      const shareUrl = testReleasePublicUrl(testRelease)
+      const shareText = shareUrl ? testReleaseShareText(testRelease, shareUrl) : ''
+      const filteredArchive = testReleaseArchive.filter(item => {
+        if (testReleaseArchiveFilter === 'all') return true
+        if (testReleaseArchiveFilter === 'archived') return item.archived
+        if (testReleaseArchiveFilter === 'submissions') return item.source === 'submission' && !item.archived
+        return !item.archived && item.source !== 'submission'
+      })
+      const activeCount = testReleaseArchive.filter(item => !item.archived && item.source !== 'submission').length
+      const submissionCount = testReleaseArchive.filter(item => !item.archived && item.source === 'submission').length
+      const archivedCount = testReleaseArchive.filter(item => item.archived).length
+
+      return (
+        <section className="space-y-5">
+          <div className="glass-card p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950">提测分发</h2>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">为外部测试方生成独立下载页。APK 文件建议放对象存储、CDN 或企业网盘直链，APKFlow 负责产品介绍、下载入口、下载次数和存档。</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <a href="/submit" target="_blank" rel="noreferrer" className="btn-secondary">打开注册提测入口</a>
+                <button type="button" onClick={refreshTestReleaseArchive} className="btn-secondary" disabled={testReleaseLoading}>刷新存档</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <section className="glass-card p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-950">提测信息</h3>
+                  <p className="mt-1 text-sm text-slate-500">保存后生成 <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs">/test/{'{id}'}</code> 分享页，下载按钮会经过计数接口。</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="btn-secondary btn-sm" onClick={fillTestReleaseFromResult} disabled={!result}>用当前检测结果填充</button>
+                  <button type="button" className="btn-secondary btn-sm" onClick={() => saveTestReleaseDraft(normalizeTestReleaseInfo({ ...defaultTestReleaseInfo, updatedAt: new Date().toLocaleString('zh-CN', { hour12: false }) }))}>新建草稿</button>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">游戏 / 产品名称</span>
+                  <input value={testRelease.productName} onChange={event => updateTestRelease('productName', event.target.value)} className={fieldClass} />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">版本号</span>
+                  <input value={testRelease.versionName} onChange={event => updateTestRelease('versionName', event.target.value)} className={fieldClass} placeholder="例如 v1.0.3" />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">包名</span>
+                  <input value={testRelease.packageName} onChange={event => updateTestRelease('packageName', event.target.value)} className={fieldClass} placeholder="com.example.game" />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">Build</span>
+                  <input value={testRelease.buildNo} onChange={event => updateTestRelease('buildNo', event.target.value)} className={fieldClass} />
+                </label>
+                <label className="block md:col-span-2">
+                  <span className="text-sm font-semibold text-slate-800">APK 下载地址</span>
+                  <input value={testRelease.apkUrl} onChange={event => updateTestRelease('apkUrl', event.target.value)} className={fieldClass} placeholder="https://..." />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">APK 大小</span>
+                  <input value={testRelease.apkSize} onChange={event => updateTestRelease('apkSize', event.target.value)} className={fieldClass} placeholder="例如 312 MB" />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">更新时间</span>
+                  <input value={testRelease.updatedAt} onChange={event => updateTestRelease('updatedAt', event.target.value)} className={fieldClass} />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">提测负责人</span>
+                  <input value={testRelease.owner} onChange={event => updateTestRelease('owner', event.target.value)} className={fieldClass} />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">负责人联系方式</span>
+                  <input value={testRelease.ownerContact} onChange={event => updateTestRelease('ownerContact', event.target.value)} className={fieldClass} placeholder="微信 / 手机 / 邮箱" />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">测试类型</span>
+                  <select value={testRelease.testType} onChange={event => updateTestRelease('testType', event.target.value)} className={fieldClass}>
+                    {['渠道包测试', '首轮功能测试', '回归测试', '灰度验证', '兼容性测试', '外部提测登记'].map(item => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">状态</span>
+                  <select value={testRelease.status} onChange={event => updateTestRelease('status', event.target.value)} className={fieldClass}>
+                    {['待处理', '待测试', '测试中', '已更新', '暂停', '完成'].map(item => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-5 grid gap-4">
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">游戏产品介绍</span>
+                  <textarea value={testRelease.intro} onChange={event => updateTestRelease('intro', event.target.value)} className={textareaClass} rows={4} placeholder="说明游戏类型、题材、核心玩法、测试背景。" />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">本轮测试重点</span>
+                  <textarea value={testRelease.testScope} onChange={event => updateTestRelease('testScope', event.target.value)} className={textareaClass} rows={4} />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">更新内容</span>
+                  <textarea value={testRelease.changelog} onChange={event => updateTestRelease('changelog', event.target.value)} className={textareaClass} rows={3} />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">安装说明</span>
+                  <textarea value={testRelease.installGuide} onChange={event => updateTestRelease('installGuide', event.target.value)} className={textareaClass} rows={3} />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">注意事项</span>
+                  <textarea value={testRelease.notice} onChange={event => updateTestRelease('notice', event.target.value)} className={textareaClass} rows={3} />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-semibold text-slate-800">产品截图 URL</span>
+                  <textarea
+                    value={testRelease.screenshots.join('\n')}
+                    onChange={event => updateTestRelease('screenshots', event.target.value.split('\n').map(item => item.trim()).filter(Boolean))}
+                    className={textareaClass}
+                    rows={3}
+                    placeholder="每行一个图片 URL。"
+                  />
+                </label>
+              </div>
+
+              {testReleaseError && <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-700">{testReleaseError}</div>}
+              {testReleaseMessage && <div className="mt-4 break-all rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-700">{testReleaseMessage}</div>}
+
+              <div className="mt-5 flex flex-wrap gap-2">
+                <button type="button" onClick={saveTestReleaseToArchive} disabled={testReleaseLoading} className="btn-primary">{testRelease.id ? '保存修改' : '保存并发布'}</button>
+                {shareUrl ? <a href={shareUrl} target="_blank" rel="noreferrer" className="btn-secondary">打开提测页</a> : <button type="button" disabled className="btn-secondary">保存后生成链接</button>}
+                {shareUrl && <CopyButton text={shareUrl} label="复制提测链接" variant="light" />}
+                {shareUrl && <CopyButton text={shareText} label="复制提测说明" variant="light" />}
+              </div>
+            </section>
+
+            <aside className="space-y-5">
+              <section className="glass-card p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-950">提测页预览</h3>
+                    <p className="mt-1 text-sm text-slate-500">测试方第一屏看到的核心信息。</p>
+                  </div>
+                  <span className={testRelease.archived ? 'status-warn' : 'status-info'}>{testRelease.archived ? '已归档' : testRelease.status || '待测试'}</span>
+                </div>
+                <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-xs font-semibold uppercase text-slate-500">Product</div>
+                  <div className="mt-2 break-words text-xl font-semibold text-slate-950">{testRelease.productName || '未命名产品'}</div>
+                  <p className="mt-3 line-clamp-5 whitespace-pre-wrap text-sm leading-6 text-slate-600">{testRelease.intro || '暂无产品介绍。'}</p>
+                </div>
+                <div className="mt-4 grid gap-2 text-sm">
+                  <div className="flex justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"><span className="text-slate-500">版本</span><b className="break-words text-right">{testRelease.versionName || '未填写'}</b></div>
+                  <div className="flex justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"><span className="text-slate-500">包名</span><b className="break-words text-right">{testRelease.packageName || '未填写'}</b></div>
+                  <div className="flex justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"><span className="text-slate-500">APK 大小</span><b>{testRelease.apkSize || '未填写'}</b></div>
+                  <div className="flex justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"><span className="text-slate-500">下载次数</span><b>{Number(testRelease.downloadCount || 0)}</b></div>
+                </div>
+                <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3 text-xs leading-5 text-slate-500">
+                  下载统计只覆盖通过提测页按钮或复制出来的跟踪下载链接产生的访问。
+                </div>
+                {shareUrl && <div className="mt-4 break-all rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">{shareUrl}</div>}
+              </section>
+
+              <section className="glass-card p-5">
+                <h3 className="text-base font-semibold text-slate-950">注册入口</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">外部产品方可通过登记页提交游戏介绍、APK 下载地址和联系方式，提交后进入下方存档。</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <a href="/submit" target="_blank" rel="noreferrer" className="btn-primary">打开登记页</a>
+                  <CopyButton text={absoluteUrl('/submit', browserOrigin)} label="复制登记链接" variant="light" />
+                </div>
+              </section>
+            </aside>
+          </div>
+
+          <section className="glass-card p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold text-slate-950">提测存档</h3>
+                <p className="mt-1 text-sm text-slate-500">已发布、登记待处理和已归档的提测记录都会保留在这里。</p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {[
+                  ['active', `已发布 ${activeCount}`],
+                  ['submissions', `登记待处理 ${submissionCount}`],
+                  ['archived', `已归档 ${archivedCount}`],
+                  ['all', `全部 ${testReleaseArchive.length}`]
+                ].map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setTestReleaseArchiveFilter(key as typeof testReleaseArchiveFilter)}
+                    className={classNames('rounded-full border px-3 py-1.5 font-semibold transition', testReleaseArchiveFilter === key ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50')}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+              <table className="min-w-[1000px] w-full text-left text-sm">
+                <thead className="bg-slate-50 text-slate-500">
+                  <tr><th className="p-4">产品</th><th className="p-4">版本 / 包名</th><th className="p-4">来源</th><th className="p-4">状态</th><th className="p-4">下载</th><th className="p-4">更新时间</th><th className="p-4">操作</th></tr>
+                </thead>
+                <tbody>
+                  {testReleaseLoading && <tr><td colSpan={7} className="p-8 text-center text-slate-500">正在加载提测存档...</td></tr>}
+                  {!testReleaseLoading && filteredArchive.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-slate-500">当前筛选下暂无提测记录。</td></tr>}
+                  {!testReleaseLoading && filteredArchive.map(item => {
+                    const itemUrl = testReleasePublicUrl(item)
+                    return (
+                      <tr key={item.id || item.productName} className="border-t border-slate-100">
+                        <td className="max-w-[260px] p-4">
+                          <div className="truncate font-semibold text-slate-950">{item.productName || '未命名产品'}</div>
+                          <div className="mt-1 truncate text-xs text-slate-500">编号：{item.id || '未生成'}</div>
+                          {item.submitterName && <div className="mt-1 truncate text-xs text-slate-500">提交人：{item.submitterName} / {item.submitterContact || '未填写'}</div>}
+                        </td>
+                        <td className="p-4">
+                          <div className="font-semibold">{item.versionName || '未填写'}{item.buildNo ? ` / Build ${item.buildNo}` : ''}</div>
+                          <div className="mt-1 max-w-[260px] truncate text-xs text-slate-500">{item.packageName || '未填写包名'}</div>
+                        </td>
+                        <td className="p-4"><span className="status-info">{item.source === 'submission' ? '登记提交' : '后台发布'}</span></td>
+                        <td className="p-4"><span className={item.archived ? 'status-warn' : 'status-pass'}>{item.archived ? '已归档' : item.status || '待测试'}</span></td>
+                        <td className="p-4">
+                          <div className="font-semibold text-slate-950">{Number(item.downloadCount || 0)} 次</div>
+                          <div className="mt-1 text-xs text-slate-500">{item.lastDownloadedAt || '暂无下载'}</div>
+                        </td>
+                        <td className="p-4 text-slate-500">{item.recordUpdatedAt || item.createdAt || '未记录'}</td>
+                        <td className="p-4">
+                          <div className="flex flex-wrap gap-2">
+                            <button type="button" className="btn-primary btn-sm" onClick={() => { saveTestReleaseDraft(item); setTestReleaseMessage('已载入该提测记录，可编辑后保存修改。') }}>编辑</button>
+                            {itemUrl && <a href={itemUrl} target="_blank" rel="noreferrer" className="btn-secondary btn-sm">打开</a>}
+                            {itemUrl && <CopyButton text={itemUrl} label="复制链接" variant="light" size="sm" />}
+                            {item.id && <CopyButton text={trackedDownloadUrl(item)} label="复制下载" variant="light" size="sm" />}
+                            {item.id && <button type="button" className="btn-secondary btn-sm" onClick={() => archiveTestRelease(item.id || '', !item.archived)}>{item.archived ? '恢复' : '归档'}</button>}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      )
+    }
+
     if (activeView === 'settings') {
       return (
         <section className="glass-card p-5">
@@ -1092,6 +1465,7 @@ export function UploadWorkspace() {
     ['history', '历史记录'],
     ['rules', '渠道规则'],
     ['reports', '报告中心'],
+    ['test_release', '提测'],
     ['settings', '系统设置']
   ] as const
 
@@ -1120,14 +1494,17 @@ export function UploadWorkspace() {
               <h1 className="mt-1 break-words text-2xl font-semibold tracking-tight text-slate-950 md:text-[28px]">APKFlow 渠道提审检测平台</h1>
               <p className="mt-2 text-sm text-slate-500">上传 APK 后自动生成多渠道提交前检测报告</p>
             </div>
-            <button type="button" onClick={() => setDiagnosticsOpen(open => !open)} className="flex w-full items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:bg-white sm:w-auto">
-              <div className={classNames('h-2.5 w-2.5 rounded-full', !healthChecked ? 'bg-amber-500' : engineMode === 'full' ? 'bg-emerald-500' : engineMode === 'degraded' ? 'bg-amber-500' : 'bg-rose-500')} />
-              <div>
-                <div className="text-xs text-slate-500">检测服务</div>
-                <div className="text-sm font-semibold text-slate-900">{engineMessage}</div>
-                <div className="mt-0.5 text-xs text-slate-500">{healthChecked ? engineText(engineMode) : '状态检查中'}</div>
-              </div>
-            </button>
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <a href="/submit" target="_blank" rel="noreferrer" className="btn-secondary">注册提测</a>
+              <button type="button" onClick={() => setDiagnosticsOpen(open => !open)} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:bg-white">
+                <div className={classNames('h-2.5 w-2.5 rounded-full', !healthChecked ? 'bg-amber-500' : engineMode === 'full' ? 'bg-emerald-500' : engineMode === 'degraded' ? 'bg-amber-500' : 'bg-rose-500')} />
+                <div>
+                  <div className="text-xs text-slate-500">检测服务</div>
+                  <div className="text-sm font-semibold text-slate-900">{engineMessage}</div>
+                  <div className="mt-0.5 text-xs text-slate-500">{healthChecked ? engineText(engineMode) : '状态检查中'}</div>
+                </div>
+              </button>
+            </div>
             </div>
           </header>
 
