@@ -1,6 +1,6 @@
 import { UploadWorkspace } from '@/components/UploadWorkspace'
 
-const fileScannerUrl = process.env.NEXT_PUBLIC_FILE_SCANNER_URL || 'https://scan.hnchpower.cn'
+const fileScannerUrl = process.env.NEXT_PUBLIC_FILE_SCANNER_URL || '/file-scan'
 
 export default function Page() {
   return (
